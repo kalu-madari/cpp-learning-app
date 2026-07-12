@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "1.0",
+  "architecture": "modular-iife",
+  "tiers": [
+    "basic",
+    "intermediate",
+    "expert",
+    "master"
+  ],
+  "observedDifficultyValues": [
+    "beginner",
+    "intermediate",
+    "advanced",
+    "expert"
+  ],
+  "chapterIdRules": {
+    "type": "integer",
+    "unique": true,
+    "sequential": true
+  },
+  "lessonIdPattern": "^ch\\d+-l\\d+$",
+  "requiredChapterFields": [
+    "id",
+    "title",
+    "icon",
+    "lessons"
+  ],
+  "requiredLessonFields": [
+    "id",
+    "title",
+    "difficulty",
+    "content",
+    "codeExample"
+  ],
+  "exerciseSchema": {
+    "requiredFields": [
+      "instruction",
+      "starterCode"
+    ],
+    "optionalFields": [
+      "expectedOutput",
+      "hints"
+    ]
+  },
+  "quizSchema": {
+    "requiredFields": [
+      "question",
+      "options",
+      "correctIndex",
+      "explanation"
+    ],
+    "rules": {
+      "minimumOptions": 2,
+      "correctIndexType": "integer",
+      "correctIndexBounds": "0 <= correctIndex < options.length"
+    }
+  },
+  "minimumLessonsPerChapter": 2,
+  "recommendedLessonsPerChapter": [3, 5],
+  "recommendedMaximumLessonsPerChapter": 7,
+  "minimumQuizzesPerLesson": 2,
+  "recommendedQuizzesPerLesson": [2, 3],
+  "recommendedMaximumChapterFileSizeBytes": 15360,
+  "chapterFileWarningSizeBytes": 10240,
+  "oneChapterPerGenerationSession": true,
+  "reservedChapterIds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+}
