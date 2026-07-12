@@ -1,0 +1,21 @@
+{
+  "name": "cpp-mastery",
+  "version": "1.0.0",
+  "description": "Learn C++ from absolute beginner to expert — interactive desktop app with built-in code editor, compiler, and structured curriculum.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "author": "CppMastery",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.4.11"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.52.2"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}

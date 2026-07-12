@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>C++ Mastery</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ===================================================================== -->
+  <!-- Custom Titlebar                                                        -->
+  <!-- ===================================================================== -->
+  <header id="titlebar">
+    <div class="titlebar-drag">
+      <div class="titlebar-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="url(#grad1)"/>
+          <path d="M2 17L12 22L22 17" stroke="url(#grad1)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M2 12L12 17L22 12" stroke="url(#grad1)" stroke-width="2" stroke-linecap="round"/>
+          <defs><linearGradient id="grad1" x1="2" y1="2" x2="22" y2="22"><stop stop-color="#818cf8"/><stop offset="1" stop-color="#c084fc"/></linearGradient></defs>
+        </svg>
+      </div>
+      <span class="titlebar-title">C++ Mastery</span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" id="btn-minimize" aria-label="Minimize">
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect y="5" width="12" height="1.5" rx="0.75" fill="currentColor"/></svg>
+      </button>
+      <button class="titlebar-btn" id="btn-maximize" aria-label="Maximize">
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+      </button>
+      <button class="titlebar-btn titlebar-close" id="btn-close" aria-label="Close">
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- App Container (Sidebar + Main)                                         -->
+  <!-- ===================================================================== -->
+  <div id="app-container">
+
+    <!-- Sidebar Navigation -->
+    <nav id="sidebar">
+      <div class="sidebar-profile">
+        <div class="profile-avatar">
+          <span class="avatar-text">C++</span>
+          <div class="avatar-ring"></div>
+        </div>
+        <div class="profile-info">
+          <span class="profile-name">Learner</span>
+          <span class="profile-level" id="user-level">Beginner</span>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="sidebar-search">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+        <input type="text" id="search-input" placeholder="Search lessons..." autocomplete="off">
+      </div>
+
+      <!-- Navigation Menu -->
+      <ul class="nav-menu" id="nav-menu">
+        <li class="nav-item active" data-view="dashboard">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span>Dashboard</span>
+        </li>
+        <li class="nav-item" data-view="lessons">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+          <span>Lessons</span>
+        </li>
+        <li class="nav-item" data-view="practice">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          <span>Practice</span>
+        </li>
+        <li class="nav-item" data-view="bookmarks">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+          <span>Bookmarks</span>
+        </li>
+        <li class="nav-item" data-view="achievements">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+          <span>Achievements</span>
+        </li>
+        <li class="nav-item" data-view="settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          <span>Settings</span>
+        </li>
+      </ul>
+
+      <!-- Sidebar Footer Stats -->
+      <div class="sidebar-footer">
+        <div class="stat-item">
+          <div class="stat-icon">🔥</div>
+          <div class="stat-info">
+            <span class="stat-value" id="streak-count">0</span>
+            <span class="stat-label">Day Streak</span>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon">📈</div>
+          <div class="stat-info">
+            <span class="stat-value" id="progress-pct">0%</span>
+            <span class="stat-label">Complete</span>
+          </div>
+        </div>
+        <div class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="main-content">
+
+      <!-- ================================================================= -->
+      <!-- DASHBOARD VIEW                                                     -->
+      <!-- ================================================================= -->
+      <section id="view-dashboard" class="view active">
+        <div class="view-header">
+          <h1>Welcome back! 👋</h1>
+          <p class="view-subtitle">Continue your C++ journey</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid" id="dashboard-stats">
+          <div class="stat-card glass-card">
+            <div class="stat-card-icon" style="--accent: #818cf8;">📚</div>
+            <div class="stat-card-value" id="stat-lessons-done">0</div>
+            <div class="stat-card-label">Lessons Completed</div>
+            <div class="stat-card-bar"><div class="stat-bar-fill" id="stat-bar-lessons"></div></div>
+          </div>
+          <div class="stat-card glass-card">
+            <div class="stat-card-icon" style="--accent: #34d399;">✅</div>
+            <div class="stat-card-value" id="stat-exercises-done">0</div>
+            <div class="stat-card-label">Exercises Passed</div>
+            <div class="stat-card-bar"><div class="stat-bar-fill" id="stat-bar-exercises" style="--bar-color: #34d399;"></div></div>
+          </div>
+          <div class="stat-card glass-card">
+            <div class="stat-card-icon" style="--accent: #fbbf24;">🔥</div>
+            <div class="stat-card-value" id="stat-streak">0</div>
+            <div class="stat-card-label">Day Streak</div>
+            <div class="stat-card-bar"><div class="stat-bar-fill" id="stat-bar-streak" style="--bar-color: #fbbf24;"></div></div>
+          </div>
+          <div class="stat-card glass-card">
+            <div class="stat-card-icon" style="--accent: #f472b6;">🏆</div>
+            <div class="stat-card-value" id="stat-achievements">0</div>
+            <div class="stat-card-label">Achievements</div>
+            <div class="stat-card-bar"><div class="stat-bar-fill" id="stat-bar-achievements" style="--bar-color: #f472b6;"></div></div>
+          </div>
+        </div>
+
+        <!-- Continue Learning -->
+        <div class="section-block">
+          <h2 class="section-title">Continue Learning</h2>
+          <div class="continue-card glass-card" id="continue-card">
+            <div class="continue-info">
+              <span class="continue-chapter" id="continue-chapter">Chapter 1</span>
+              <h3 class="continue-title" id="continue-title">Your First C++ Program</h3>
+              <p class="continue-desc" id="continue-desc">Start your journey with the classic Hello World program.</p>
+            </div>
+            <button class="btn btn-primary btn-glow" id="continue-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Continue
+            </button>
+          </div>
+        </div>
+
+        <!-- Chapter Progress -->
+        <div class="section-block">
+          <h2 class="section-title">Chapter Progress</h2>
+          <div class="chapter-progress-grid" id="chapter-progress-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- LESSONS VIEW (Chapter List)                                        -->
+      <!-- ================================================================= -->
+      <section id="view-lessons" class="view">
+        <div class="view-header">
+          <h1>📚 Lesson Library</h1>
+          <p class="view-subtitle">Master C++ step by step</p>
+        </div>
+        <div class="chapters-list" id="chapters-list">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- LESSON DETAIL VIEW (Content + Editor)                              -->
+      <!-- ================================================================= -->
+      <section id="view-lesson-detail" class="view">
+        <div class="lesson-layout">
+          <!-- Left: Lesson Content -->
+          <div class="lesson-panel lesson-content-panel" id="lesson-content-panel">
+            <div class="lesson-nav-bar">
+              <button class="btn btn-ghost" id="btn-back-to-lessons">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                Back
+              </button>
+              <div class="lesson-nav-controls">
+                <button class="btn btn-ghost btn-icon" id="btn-bookmark" title="Bookmark this lesson">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-icon" id="btn-prev-lesson" title="Previous lesson">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-icon" id="btn-next-lesson" title="Next lesson">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="lesson-content-scroll" id="lesson-content-scroll">
+              <div class="lesson-header-block">
+                <span class="lesson-difficulty-badge" id="lesson-difficulty">Beginner</span>
+                <h1 class="lesson-title" id="lesson-title">Lesson Title</h1>
+                <p class="lesson-chapter-info" id="lesson-chapter-info">Chapter 1 · Lesson 1</p>
+              </div>
+              <div class="lesson-body" id="lesson-body">
+                <!-- Lesson HTML content rendered here -->
+              </div>
+
+              <!-- Exercise Section -->
+              <div class="lesson-exercise-section" id="lesson-exercise-section" style="display:none;">
+                <div class="section-divider">
+                  <span>💻 Exercise</span>
+                </div>
+                <div class="exercise-card glass-card">
+                  <p class="exercise-instruction" id="exercise-instruction"></p>
+                  <div class="exercise-hints" id="exercise-hints"></div>
+                  <button class="btn btn-secondary" id="btn-load-exercise">Load Exercise in Editor →</button>
+                </div>
+              </div>
+
+              <!-- Quiz Section -->
+              <div class="lesson-quiz-section" id="lesson-quiz-section" style="display:none;">
+                <div class="section-divider">
+                  <span>📝 Quiz</span>
+                </div>
+                <div id="quiz-container">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+
+              <!-- Lesson Complete -->
+              <div class="lesson-complete-section" id="lesson-complete-section" style="display:none;">
+                <div class="complete-card glass-card">
+                  <div class="complete-icon">🎉</div>
+                  <h3>Lesson Complete!</h3>
+                  <p>Great job! You've mastered this topic.</p>
+                  <button class="btn btn-primary" id="btn-next-lesson-complete">Next Lesson →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resize Handle -->
+          <div class="resize-handle" id="resize-handle"></div>
+
+          <!-- Right: Editor + Output -->
+          <div class="lesson-panel editor-panel" id="editor-panel">
+            <!-- Editor Toolbar -->
+            <div class="editor-toolbar">
+              <div class="editor-toolbar-left">
+                <span class="editor-file-tab active">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                  main.cpp
+                </span>
+              </div>
+              <div class="editor-toolbar-right">
+                <button class="btn btn-ghost btn-sm" id="btn-reset-code" title="Reset to original code">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+                  Reset
+                </button>
+                <button class="btn btn-ghost btn-sm" id="btn-format-code" title="Format code">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>
+                  Format
+                </button>
+                <button class="btn btn-run" id="btn-run-code" title="Compile & Run (Ctrl+Enter)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Run
+                </button>
+              </div>
+            </div>
+
+            <!-- Monaco Editor Container -->
+            <div id="monaco-container"></div>
+
+            <!-- Output Panel -->
+            <div class="output-panel" id="output-panel">
+              <div class="output-toolbar">
+                <div class="output-tabs">
+                  <button class="output-tab active" data-tab="output">Output</button>
+                  <button class="output-tab" data-tab="errors">Errors</button>
+                </div>
+                <div class="output-toolbar-right">
+                  <span class="output-status" id="output-status"></span>
+                  <button class="btn btn-ghost btn-sm" id="btn-clear-output" title="Clear output">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="output-content" id="output-content">
+                <div class="output-placeholder">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+                    <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+                  </svg>
+                  <span>Click <strong>Run</strong> or press <kbd>Ctrl+Enter</kbd> to compile and execute</span>
+                </div>
+              </div>
+
+              <!-- Verification Result -->
+              <div class="verification-panel" id="verification-panel" style="display:none;">
+                <div class="verification-content" id="verification-content"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PRACTICE VIEW                                                      -->
+      <!-- ================================================================= -->
+      <section id="view-practice" class="view">
+        <div class="view-header">
+          <h1>💻 Practice Mode</h1>
+          <p class="view-subtitle">Sharpen your skills with guided exercises</p>
+        </div>
+        <div class="practice-filters" id="practice-filters">
+          <button class="filter-btn active" data-difficulty="all">All</button>
+          <button class="filter-btn" data-difficulty="beginner">Beginner</button>
+          <button class="filter-btn" data-difficulty="intermediate">Intermediate</button>
+          <button class="filter-btn" data-difficulty="advanced">Advanced</button>
+          <button class="filter-btn" data-difficulty="expert">Expert</button>
+        </div>
+        <div class="practice-grid" id="practice-grid">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- BOOKMARKS VIEW                                                     -->
+      <!-- ================================================================= -->
+      <section id="view-bookmarks" class="view">
+        <div class="view-header">
+          <h1>🔖 Bookmarks</h1>
+          <p class="view-subtitle">Your saved lessons</p>
+        </div>
+        <div class="bookmarks-list" id="bookmarks-list">
+          <div class="empty-state" id="bookmarks-empty">
+            <div class="empty-icon">🔖</div>
+            <h3>No bookmarks yet</h3>
+            <p>Bookmark lessons to access them quickly here.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- ACHIEVEMENTS VIEW                                                  -->
+      <!-- ================================================================= -->
+      <section id="view-achievements" class="view">
+        <div class="view-header">
+          <h1>🏆 Achievements</h1>
+          <p class="view-subtitle">Track your milestones</p>
+        </div>
+        <div class="achievements-grid" id="achievements-grid">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- SETTINGS VIEW                                                      -->
+      <!-- ================================================================= -->
+      <section id="view-settings" class="view">
+        <div class="view-header">
+          <h1>⚙️ Settings</h1>
+          <p class="view-subtitle">Customize your experience</p>
+        </div>
+        <div class="settings-list">
+          <div class="setting-group glass-card">
+            <h3>Appearance</h3>
+            <div class="setting-item">
+              <div class="setting-info">
+                <span class="setting-label">Theme</span>
+                <span class="setting-desc">Switch between dark and light mode</span>
+              </div>
+              <div class="theme-toggle" id="theme-toggle">
+                <span class="toggle-label">Dark</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="theme-checkbox">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label">Light</span>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <span class="setting-label">Editor Font Size</span>
+                <span class="setting-desc">Adjust the code editor font size</span>
+              </div>
+              <div class="font-size-control">
+                <button class="btn btn-ghost btn-sm" id="btn-font-decrease">A-</button>
+                <span id="font-size-display">14px</span>
+                <button class="btn btn-ghost btn-sm" id="btn-font-increase">A+</button>
+              </div>
+            </div>
+          </div>
+          <div class="setting-group glass-card">
+            <h3>Compiler</h3>
+            <div class="setting-item">
+              <div class="setting-info">
+                <span class="setting-label">C++ Compiler</span>
+                <span class="setting-desc" id="compiler-status">Checking...</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="btn-check-compiler">Check</button>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <span class="setting-label">Execution Timeout</span>
+                <span class="setting-desc">Maximum time for program execution</span>
+              </div>
+              <select id="timeout-select" class="select-input">
+                <option value="5000">5 seconds</option>
+                <option value="10000" selected>10 seconds</option>
+                <option value="30000">30 seconds</option>
+                <option value="60000">60 seconds</option>
+              </select>
+            </div>
+          </div>
+          <div class="setting-group glass-card">
+            <h3>Progress</h3>
+            <div class="setting-item">
+              <div class="setting-info">
+                <span class="setting-label">Reset All Progress</span>
+                <span class="setting-desc">This will clear all your progress, bookmarks, and achievements</span>
+              </div>
+              <button class="btn btn-danger btn-sm" id="btn-reset-progress">Reset</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- SEARCH RESULTS VIEW                                                -->
+      <!-- ================================================================= -->
+      <section id="view-search" class="view">
+        <div class="view-header">
+          <h1>🔍 Search Results</h1>
+          <p class="view-subtitle" id="search-results-subtitle">Showing results for ""</p>
+        </div>
+        <div class="search-results-list" id="search-results-list">
+          <div class="empty-state" id="search-empty">
+            <div class="empty-icon">🔍</div>
+            <h3>No results found</h3>
+            <p>Try a different search term.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- Toast Container                                                        -->
+  <!-- ===================================================================== -->
+  <div id="toast-container"></div>
+
+  <!-- ===================================================================== -->
+  <!-- Modal Overlay                                                          -->
+  <!-- ===================================================================== -->
+  <div id="modal-overlay" class="modal-overlay" style="display:none;">
+    <div class="modal-card glass-card" id="modal-card">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- Compiler Setup Dialog                                                  -->
+  <!-- ===================================================================== -->
+  <div id="compiler-setup-overlay" class="modal-overlay" style="display:none;">
+    <div class="modal-card glass-card compiler-setup-card">
+      <div class="compiler-setup-icon">⚠️</div>
+      <h2>C++ Compiler Not Found</h2>
+      <p>To compile and run C++ code, you need a C++ compiler installed on your system.</p>
+      <div class="setup-steps">
+        <h3>Quick Setup (recommended):</h3>
+        <ol>
+          <li>Download <strong>MSYS2</strong> from <a href="https://www.msys2.org/" target="_blank">msys2.org</a></li>
+          <li>Run the installer and follow the prompts</li>
+          <li>Open <strong>MSYS2 UCRT64</strong> terminal and run:<br>
+            <code>pacman -S mingw-w64-ucrt-x86_64-gcc</code></li>
+          <li>Add <code>C:\msys64\ucrt64\bin</code> to your system PATH</li>
+          <li>Restart this app</li>
+        </ol>
+        <h3>Alternative: MinGW-w64</h3>
+        <ol>
+          <li>Download MinGW-w64 from <a href="https://winlibs.com/" target="_blank">winlibs.com</a></li>
+          <li>Extract and add the <code>bin</code> folder to your system PATH</li>
+          <li>Restart this app</li>
+        </ol>
+      </div>
+      <div class="setup-actions">
+        <button class="btn btn-primary" id="btn-dismiss-setup">Continue Without Compiler</button>
+        <button class="btn btn-secondary" id="btn-recheck-compiler">Re-check Compiler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- Loading Screen                                                         -->
+  <!-- ===================================================================== -->
+  <div id="loading-screen">
+    <div class="loading-content">
+      <div class="loading-logo">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="url(#loadGrad)"/>
+          <path d="M2 17L12 22L22 17" stroke="url(#loadGrad)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M2 12L12 17L22 12" stroke="url(#loadGrad)" stroke-width="2" stroke-linecap="round"/>
+          <defs><linearGradient id="loadGrad" x1="2" y1="2" x2="22" y2="22"><stop stop-color="#818cf8"/><stop offset="1" stop-color="#c084fc"/></linearGradient></defs>
+        </svg>
+      </div>
+      <h2>C++ Mastery</h2>
+      <p>Loading your learning environment...</p>
+      <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- Scripts                                                                -->
+  <!-- ===================================================================== -->
+  <!-- Monaco Editor AMD Loader -->
+  <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
+
+  <!-- Lesson Data -->
+  <script src="js/lessons-data.js"></script>
+
+  <!-- Main Application -->
+  <script src="js/app.js"></script>
+
+</body>
+</html>
