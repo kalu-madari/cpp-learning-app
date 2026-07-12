@@ -545,8 +545,28 @@
   <!-- Monaco Editor AMD Loader -->
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
 
-  <!-- Lesson Data -->
-  <script src="js/lessons-data.js"></script>
+  <!-- Lesson Data — Modular Chapter Files -->
+  <!-- Basic (Chapters 1-4) -->
+  <script src="lesson-data/basic/c01-getting-started-with-c.js"></script>
+  <script src="lesson-data/basic/c02-variables-and-data-types.js"></script>
+  <script src="lesson-data/basic/c03-operators-and-expressions.js"></script>
+  <script src="lesson-data/basic/c04-control-flow.js"></script>
+  <!-- Intermediate (Chapters 5-7, 9) -->
+  <script src="lesson-data/intermediate/c05-loops.js"></script>
+  <script src="lesson-data/intermediate/c06-functions.js"></script>
+  <script src="lesson-data/intermediate/c07-arrays-and-strings.js"></script>
+  <script src="lesson-data/intermediate/c09-structures-and-enums.js"></script>
+  <!-- Expert (Chapters 8, 10-13) -->
+  <script src="lesson-data/expert/c08-pointers-and-references.js"></script>
+  <script src="lesson-data/expert/c10-object-oriented-programming.js"></script>
+  <script src="lesson-data/expert/c11-templates-and-stl.js"></script>
+  <script src="lesson-data/expert/c12-file-handling.js"></script>
+  <script src="lesson-data/expert/c13-exception-handling.js"></script>
+  <!-- Master (Chapters 14-15) -->
+  <script src="lesson-data/master/c14-smart-pointers-and-memory.js"></script>
+  <script src="lesson-data/master/c15-advanced-topics.js"></script>
+  <!-- Curriculum Aggregator (must load AFTER all chapters) -->
+  <script src="lesson-data/curriculum.js"></script>
 
   <!-- Main Application -->
   <script src="js/app.js"></script>
