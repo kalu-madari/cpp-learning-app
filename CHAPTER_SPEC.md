@@ -1,7 +1,7 @@
 # CHAPTER_SPEC.md
 # C++ Mastery — Canonical Chapter & Curriculum Specification
-**Version:** 1.0  
-**Based on commit:** e2068e5 (Refactor curriculum into modular chapter files)  
+**Version:** 2.0
+**Based on commit:** 66725b4
 **Authority:** This document is derived from direct inspection of the application source code. It takes precedence over README.md, comments, and prior conversation context.
 
 ---
@@ -28,11 +28,9 @@ Read these files in order before generating or modifying any chapter:
 | `renderer/index.html` | Script load order and CSP constraints |
 | `renderer/css/styles.css` | Which HTML elements/classes are styled in lesson content |
 | `renderer/lesson-data/curriculum.js` | How modules are aggregated into `window.LESSONS_DATA` |
-| `renderer/lesson-data/basic-index.js` | Chapter manifest for the Basic tier |
-| `renderer/lesson-data/intermediate-index.js` | Chapter manifest for the Intermediate tier |
-| `renderer/lesson-data/expert-index.js` | Chapter manifest for the Expert tier |
-| `renderer/lesson-data/master-index.js` | Chapter manifest for the Master tier |
-| `renderer/lesson-data/basic/c01-*.js` | Reference chapter (inspect structure before generating) |
+| `curriculum-rules.json` | Validator configuration. Note: The `tiers` key is preserved but its values document the new 7 stages (per FINAL_CURRICULUM_ARCHITECTURE.md). |
+| `renderer/lesson-data/<tier>-index.js` | Legacy tier manifests (removed in Phase F) |
+| `renderer/lesson-data/chapters/c01-*.js` | Schema v2 chapters (future location until generated) |
 | `main.js` | IPC handlers: `compile-and-run`, `check-compiler` |
 | `preload.js` | API surface exposed to renderer: `window.api.compileAndRun`, `window.api.checkCompiler` |
 
@@ -81,7 +79,7 @@ The application uses `window.LESSONS_DATA` as the final curriculum contract. The
 | Font size control | ✅ IMPLEMENTED AND WORKING | 10–24px |
 | Execution timeout setting | ✅ IMPLEMENTED AND WORKING | User-configurable |
 | Keyboard shortcut Ctrl+Enter | ✅ IMPLEMENTED AND WORKING | Triggers compile and run |
-| stdin support | ⚠️ IMPLEMENTED BUT LIMITED | Hardcoded to empty string (`''`) |
+| stdin support | ✅ IMPLEMENTED AND WORKING | Fully supported and test-covered (Input tab + Terminal tab) |
 | Resizable pane | ✅ IMPLEMENTED AND WORKING | Drag handle between content and editor |
 | Prev/Next lesson navigation | ✅ IMPLEMENTED AND WORKING | Linear order across all chapters |
 | XP system | ❌ NOT IMPLEMENTED | No XP field used anywhere in app.js |
@@ -93,19 +91,26 @@ The application uses `window.LESSONS_DATA` as the final curriculum contract. The
 | Lesson tags | ❌ NOT IMPLEMENTED | No tag field consumed |
 | Chapter difficulty badge | ❌ NOT IMPLEMENTED | Chapter-level difficulty not shown |
 
-### 4.2 stdin Constraint — Critical
+### 4.2 stdin Constraint — Validation vs Runtime
 
-`compileAndRun` always passes `stdinInput: ''`. **Programs that read from `cin` or `scanf` will block forever** and hit the execution timeout. Do not include programs that require interactive user input in lesson `codeExample` or exercise `starterCode` unless the expected behavior is to demonstrate the timeout.
+**Runtime:** Interactive stdin is fully supported and test-covered in the application (Input tab + Terminal tab).
+**Validation:** Currently, the validator does not support interactive input during automated execution. Programs requiring interactive input will hang and timeout. Schema v2 introduces the `stdinFixture` field, but **automated execution support for piping this fixture is a Phase D change** and is not currently implemented.
 
 ### 4.3 Supported HTML in lesson.content
 
 The `lesson.content` field is injected as `innerHTML` into a `<div class="lesson-body">`. The following HTML elements have CSS styling:
 `<h2>`, `<h3>`, `<p>`, `<ul>`, `<ol>`, `<li>`, `<code>`, `<pre><code>`, `<strong>`, `<em>`.
 
+**NEW in v2 (Styled):**
+- `<div class="note">` — blue informational callout
+- `<div class="warning">` — orange warning callout
+- `<div class="tip">` — green best-practice callout
+- `<div class="mistake">` — red common-mistake callout
+- `<table>` — basic table styling
+
 **NOT styled (avoid or use with care):**
-- `<table>`, `<blockquote>` — no CSS defined
+- `<blockquote>` — not styled
 - `<img>`, `<a>` — CSP restricts external resources
-- Custom classes (`.tip-box`, `.callout`, etc.) — not defined in styles.css
 
 ---
 
@@ -115,14 +120,11 @@ The `lesson.content` field is injected as `innerHTML` into a `<div class="lesson
 
 ```javascript
 {
-  // CURRENT REQUIRED CONTRACT
-  id: Number,          // Integer 1-N; must be globally unique; determines sort order
-  title: String,       // Display title, e.g. "Getting Started with C++"
-  icon: String,        // Single emoji character, e.g. "🚀"
-  lessons: Array,      // Array of lesson objects
-
-  // CURRENT OPTIONAL (but recommended)
-  description: String  // Short subtitle shown in chapter card, e.g. "Your first steps into C++"
+  id: Number,          // Integer 1–34; globally unique; determines sort order
+  title: String,       // Display title
+  description: String, // Short subtitle (optional but recommended)
+  icon: String,        // Single emoji
+  lessons: Array       // Array of lesson objects
 }
 ```
 
@@ -139,30 +141,32 @@ The `lesson.content` field is injected as `innerHTML` into a `<div class="lesson
 
 ```javascript
 {
-  // CURRENT REQUIRED CONTRACT
-  id: String,           // Format: "chN-lM" where N=chapter id, M=1-indexed lesson number
-                        // WARNING: NEVER rename an existing lesson id — breaks progress persistence
+  // REQUIRED
+  id: String,           // "chN-lM" — N = chapter id (no zero-pad), M = 1-indexed lesson number
+  title: String,
+  difficulty: String,   // "beginner" | "intermediate" | "advanced" | "expert"
+  content: String,      // HTML string injected into .lesson-body (see allowed elements)
+  codeExample: String,  // Complete, compilable C++17 source; use \n for newlines
 
-  title: String,        // Display title, e.g. "Hello World"
-
-  difficulty: String,   // One of: "beginner" | "intermediate" | "advanced" | "expert"
-                        // Used for: difficulty badge CSS class, practice mode filter
-
-  content: String,      // HTML string injected as innerHTML into .lesson-body
-
-  codeExample: String,  // C++ source code string loaded into Monaco editor on lesson open
-                        // Use \n for newlines (single-line JS string with escape sequences)
-
-  // CURRENT OPTIONAL
+  // OPTIONAL — example output validation
   expectedOutput: String | null,
-                        // If non-null: the exact stdout the codeExample should produce
-                        // Compared after trim() normalization
-                        // Set to null when output is non-deterministic or exercise-only
+  // If non-null: automated validation when codeExample runs.
+  // null → no automatic check (open-ended, stdin-interactive, or non-deterministic).
 
-  exercise: Object | null,
-                        // Set to null to hide the exercise section
+  // NEW IN v2 — stdin for automated validation of codeExample
+  stdinFixture: String | null | undefined, // optional; undefined treated as null
+  // If non-null AND expectedOutput is non-null:
+  //   piped verbatim to the compiled program during validate_curriculum.js execution.
+  //   Enables automated validation of interactive programs.
+  // null → program receives empty stdin during validation.
 
-  quiz: Array | null    // Set to null or [] to hide the quiz section
+  // NEW IN v2 — replaces exercise: Object
+  exercises: Array | null,
+  // null or [] → exercise section is hidden.
+  // Array of exercise objects. Max 3 per lesson.
+
+  // UNCHANGED — quiz section
+  quiz: Array | null    // Array of quiz question objects. null or [] → hidden.
 }
 ```
 
@@ -171,14 +175,24 @@ The `lesson.content` field is injected as `innerHTML` into a `<div class="lesson
 ```javascript
 {
   // REQUIRED
-  instruction: String,      // Plain text instruction shown to the user
-  starterCode: String,      // C++ source loaded into editor when "Load Exercise" is clicked
+  instruction: String,      // Plain text instruction shown to the learner
+  starterCode: String,      // Complete, compilable C++ source loaded on exercise load
 
   // OPTIONAL
   expectedOutput: String | null,
-                            // If non-null: triggers output verification when user runs
-                            // If null: exercise is open-ended, no automatic pass/fail
-  hints: Array              // Array of plain text hint strings (hover-to-reveal in UI)
+  // Non-null → triggers automated output check when user runs exercise.
+  // null → open-ended, no automatic pass/fail.
+
+  stdinFixture: String | null | undefined,
+  // NEW IN v2. Stdin piped during validate_curriculum.js exercise validation.
+  // Mirrors lesson-level stdinFixture but scoped to this exercise.
+
+  // REQUIRED IN v2
+  exerciseType: String,
+  // Must be one of: "modify" | "debug" | "complete" | "write" | "predict" | "review"
+
+  hints: Array
+  // Array of plain text strings. Empty array is valid. 1–3 recommended.
 }
 ```
 
@@ -216,14 +230,17 @@ The `lesson.content` field is injected as `innerHTML` into a `<div class="lesson
         "content": "<h2>Motivation</h2><p>Why do this?</p><h3>Syntax</h3><pre><code>code();</code></pre>",
         "codeExample": "#include <iostream>\n\nint main() {\n    std::cout << \"Hello!\\n\";\n    return 0;\n}",
         "expectedOutput": "Hello!",
-        "exercise": {
-          "instruction": "Print Goodbye!",
-          "starterCode": "#include <iostream>\n\nint main() {\n    // Write your code here\n    return 0;\n}",
-          "expectedOutput": "Goodbye!",
-          "hints": [
-            "Use std::cout"
-          ]
-        },
+        "exercises": [
+          {
+            "instruction": "Print Goodbye!",
+            "starterCode": "#include <iostream>\n\nint main() {\n    // Write your code here\n    return 0;\n}",
+            "expectedOutput": "Goodbye!",
+            "exerciseType": "modify",
+            "hints": [
+              "Use std::cout"
+            ]
+          }
+        ],
         "quiz": [
           {
             "question": "What is the return type of main?",
@@ -262,39 +279,17 @@ The `lesson.content` field is injected as `innerHTML` into a `<div class="lesson
 
 ---
 
-## 9. Tier Definitions
+## 9. Stage Definitions
 
-### BASIC
-- **Prerequisites:** None.
-- **Goals/Exit:** Standalone programs with variables, flow control, functions, basic I/O.
-- **Independence:** Needs heavy scaffolding.
-- **Debugging:** Reads simple compile errors with guidance.
-- **Topics:** Hello World, variables, arithmetic, conditions, loops, simple functions.
-- **NOT allowed:** Pointers, classes, templates, exceptions.
-
-### INTERMEDIATE
-- **Prerequisites:** Basic tier.
-- **Goals/Exit:** Multi-function programs, arrays, strings, structs, basic OOP.
-- **Independence:** Can write functions from specs.
-- **Debugging:** Understands scope errors, independently reads compiler errors.
-- **Topics:** Loops/functions (deep dive), arrays, structs, enums, basic file I/O, references.
-- **NOT allowed:** Virtual functions, smart pointers, templates.
-
-### EXPERT
-- **Prerequisites:** Intermediate tier.
-- **Goals/Exit:** Class hierarchies, templates, exceptions, memory management.
-- **Independence:** Can design classes and catch exceptions.
-- **Debugging:** Linker errors, runtime diagnostics.
-- **Topics:** Pointers, dynamic memory, OOP, templates, STL containers, exceptions.
-- **NOT allowed:** Move semantics, custom allocators, coroutines.
-
-### MASTER
-- **Prerequisites:** Expert tier.
-- **Goals/Exit:** Modern C++ with RAII, move semantics, lambdas.
-- **Independence:** Write from scratch using modern idioms.
-- **Debugging:** Memory leaks, race conditions.
-- **Topics:** Smart pointers, RAII, lambdas, STL algorithms, concurrency basics.
-- **NOT allowed:** Compiler internals, platform-specific OS APIs.
+| Stage | Name | Chapters | Learner Entry State | Exit Competency |
+|---|---|---|---|---|
+| 1 | Foundations | 1–6 | Zero C++ knowledge | Write standalone programs with variables, I/O, conditions, loops; read simple compiler errors |
+| 2 | Structured Programming | 7–12 | Can write sequential programs | Decompose into functions; use vectors and strings; understand pass-by-value vs reference; write basic recursive functions |
+| 3 | Data Abstraction | 13–17 | Multi-function programs with collections | Design and implement classes; use const correctly; understand value semantics, RAII, and operator overloading |
+| 4 | Pointers and Polymorphism | 18–22 | Well-designed classes | Use raw pointers safely; manage dynamic memory; design class hierarchies; dispatch dynamically; handle exceptions |
+| 5 | Modern C++ | 23–28 | OOP + exception handling | Write modern idiomatic C++ with smart pointers, move semantics, lambdas, and STL algorithms |
+| 6 | Applied C++ | 29–32 | Comfortable with modern idioms | File I/O, error patterns, program organisation, debugging and UB awareness |
+| 7 | Advanced Topics | 33–34 | Solid modern C++ | Advanced templates, C++20 concepts, concurrency basics, capstone project |
 
 ---
 
@@ -346,7 +341,7 @@ var normalizedActual = (actual || '').trim();
 var normalizedExpected = (expected || '').trim();
 ```
 - **Newlines & Whitespace:** Leading/trailing whitespace on the *entire output* is trimmed. Internal whitespace and newlines must match exactly.
-- **No interactive input:** Do not expect prompts or interactive input handling.
+- **Interactive input:** Programs requiring interactive input currently hang in the validator. Once Phase D implements `stdinFixture` piping, you must provide `stdinFixture` to supply deterministic input, or set `expectedOutput: null`.
 - **Fragile Output:** Floating-point outputs without `fixed << setprecision` are fragile across platforms. Set `expectedOutput: null` or enforce precision.
 - **Addresses/Randomness/Timestamps/Unordered Iteration:** Set `expectedOutput: null`.
 - **Set `expectedOutput: null` when:** The output is non-deterministic, platform-dependent, or the exercise is open-ended.
@@ -357,7 +352,7 @@ var normalizedExpected = (expected || '').trim();
 
 - **Categories:** Code Completion, Code Modification, Predict Output, Fix Bug, Write from Scratch, Refactoring, Chapter Challenge.
 - **Purpose:** Active practice of the lesson's concept.
-- **Tier Matching:** Scaffolding should decrease as tiers progress (Basic = fill blanks, Expert = write from scratch).
+- **Stage Matching:** Scaffolding should decrease as stages progress (Stage 1 = fill blanks, Stage 7 = write from scratch).
 - **Validation:** Use `expectedOutput` for automatic verification when possible. Use `null` for open-ended or creative tasks.
 - **Hints:** 1-3 hints per exercise, progressive disclosure.
 
@@ -379,7 +374,7 @@ var normalizedExpected = (expected || '').trim();
 
 - **Lessons per chapter:** 2–7 (3-5 recommended).
 - **Content size per lesson:** 150–500 words of prose.
-- **Maximum chapter file size:** ~15,000 bytes. (Warning at 10,000 bytes).
+- **Maximum chapter file size:** ~20,000 bytes. (Warning at 15,000 bytes).
 - **One-chapter-per-session:** AI generation must happen one chapter at a time to prevent quota exhaustion.
 - **Splitting:** If a chapter grows too large, split it logically (e.g., "Functions Part 1", "Functions Part 2").
 
@@ -387,11 +382,12 @@ var normalizedExpected = (expected || '').trim();
 
 ## 17. IDs and Naming Conventions
 
-- **Filenames:** `renderer/lesson-data/<tier>/c<NN>-<slug>.js`
+- **Filenames:** `renderer/lesson-data/chapters/c<NN>-<slug>.js` (Future Schema v2 location until generated)
+- **Legacy Filenames:** `renderer/lesson-data/<tier>/c<NN>-<slug>.js` (Removed in Phase F)
 - **Chapter IDs:** Integer, globally unique, sequential.
 - **Lesson IDs:** `ch<N>-l<M>` (e.g., `ch1-l2`).
 - **Slugs:** Lowercase, hyphen-separated.
-- **Tier indexes:** `renderer/lesson-data/<tier>-index.js`
+- **Legacy Tier indexes:** `renderer/lesson-data/<tier>-index.js` (Removed in Phase F)
 - **CRITICAL RULE:** **Never rename an existing chapter ID or lesson ID.** Progress is saved in localStorage using the lesson ID. Renaming IDs destroys user progress.
 
 ---
@@ -448,14 +444,14 @@ A generated chapter is complete when:
 - [ ] `correctIndex` in bounds and varied; `explanation` present
 - [ ] All `codeExample` programs compile under C++17
 - [ ] All `expectedOutput` values match actual output exactly
-- [ ] Included in `index.html` and `<tier>-index.js`
+- [ ] Included in `index.html` (Note: legacy `<tier>-index.js` files are not used for Schema v2 chapters and will be removed in Phase F)
 - [ ] Tested manually: App launches, chapter renders, editor works, code runs
 
 ---
 
 ## 22. Current Limitations
 
-- **Empty stdin:** Programs requiring interactive input will hang and timeout.
+- **Interactive Stdin in Validator:** Programs requiring interactive input currently hang and timeout in the validator. Support for `stdinFixture` piping will be added in Phase D.
 - **Single Quiz Attempt:** UI locks choices after one click.
 - **Basic Formatter:** Indentation only, no full C++ parsing.
 - **CSP Restrictions:** No external images, scripts, or styles allowed in lesson content.
@@ -469,17 +465,26 @@ These fields are **NOT CURRENTLY SUPPORTED**. Do not use them without modifying 
 - `lesson.duration` (Estimated minutes)
 - `lesson.prerequisites` (Array of lesson IDs)
 - `lesson.tags` (Array of topic tags)
-- `exercise.type` (Categorization of practice mode)
 - `quiz.difficulty`
 
 ---
 
-## 24. Validator Design Recommendation
+## 24. Validator Execution and Phase B/D Enhancements
 
-A future `validate-curriculum.js` Node script should be implemented to verify:
+The existing `validate_curriculum.js` script verifies:
 - **Schema:** JSON shape, field types, required fields.
 - **IDs:** Uniqueness, format regex, no duplicates.
 - **Quiz:** `options.length >= 2`, `0 <= correctIndex < options.length`.
 - **Compilation:** Spawns `g++` to compile each `codeExample` and `starterCode`.
 - **Execution:** Runs the binary, trims stdout, compares to `expectedOutput`.
-- **Size:** Warns if a chapter file > 15KB.
+- **Size:** Warns on large chapter files.
+
+Phase B and D enhancements add:
+- Dynamic discovery of the `chapters/` directory.
+- `VALIDATE_NEW_ONLY` staging mode for strict Schema v2 enforcement.
+- Support for piping `stdinFixture` to the compiled program during execution (Phase D).
+- Legacy `exercise: Object` normalization during transition.
+
+**Cutover and Cleanup:**
+- **Phase F (Atomic Cutover):** Removes legacy tier directories, tier index files, and old `<script>` tags from `index.html`.
+- **Phase G (Cleanup):** Removes transition compatibility logic (legacy normalization and staging mode switches) from the validator and renderer.
