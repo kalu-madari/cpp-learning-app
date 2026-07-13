@@ -133,6 +133,11 @@
     isCompiling: false,
     originalCode: '',
     editorMode: 'example', // Tracks if the editor currently shows an example or exercise
+    activeSessionId: null,
+    activeExecutionContext: null,
+    stdoutAccumulator: '',
+    stderrAccumulator: '',
+    stdinOpen: false,
 
     // Persisted state
     progress: {
@@ -162,6 +167,8 @@
     loadState();
     applyTheme();
     bindUIEvents();
+    initIpcListeners();
+    initVerticalResizeHandle();
     await checkCompiler();
     initMonaco();
     renderDashboard();
@@ -579,9 +586,20 @@
 
     // Editor toolbar
     document.getElementById('btn-run-code').addEventListener('click', compileAndRun);
+    document.getElementById('btn-stop-code').addEventListener('click', stopExecution);
     document.getElementById('btn-reset-code').addEventListener('click', resetCode);
     document.getElementById('btn-format-code').addEventListener('click', formatCode);
     document.getElementById('btn-clear-output').addEventListener('click', clearOutput);
+
+    // Input controls
+    document.getElementById('btn-send-input').addEventListener('click', sendInput);
+    document.getElementById('btn-close-input').addEventListener('click', closeInput);
+    document.getElementById('stdin-textarea').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendInput();
+      }
+    });
 
     // Output tabs
     document.querySelectorAll('.output-tab').forEach(function (tab) {
@@ -754,6 +772,111 @@
         document.body.style.userSelect = '';
       }
     });
+  }
+
+  function initVerticalResizeHandle() {
+    var handle = document.getElementById('resize-handle-vertical');
+    var outputPanel = document.getElementById('output-panel');
+    var editorPanel = document.getElementById('editor-panel');
+    var isDragging = false;
+    var startY, startHeight;
+
+    // Restore saved height
+    if (state.settings.editorSplitSize) {
+      outputPanel.style.height = state.settings.editorSplitSize + 'px';
+    }
+
+    handle.addEventListener('mousedown', function (e) {
+      isDragging = true;
+      startY = e.clientY;
+      startHeight = outputPanel.offsetHeight;
+      handle.classList.add('active');
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+      if (!isDragging) return;
+      var delta = startY - e.clientY;
+      var newHeight = startHeight + delta;
+
+      var minOutputH = 120;
+      var maxOutputH = editorPanel.offsetHeight - 150;
+      newHeight = Math.max(minOutputH, Math.min(maxOutputH, newHeight));
+
+      outputPanel.style.height = newHeight + 'px';
+
+      if (state.editor && state.editor.layout) {
+        state.editor.layout();
+      }
+    });
+
+    document.addEventListener('mouseup', function () {
+      if (isDragging) {
+        isDragging = false;
+        handle.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        state.settings.editorSplitSize = outputPanel.offsetHeight;
+        saveSettings();
+        if (state.editor && state.editor.layout) {
+            state.editor.layout();
+        }
+      }
+    });
+  }
+
+  // =========================================================================
+  // IPC Listeners (Session-based execution)
+  // =========================================================================
+  function initIpcListeners() {
+    window.api.onExecutionStdout(function(data) {
+      if (data.sessionId !== state.activeSessionId) return;
+      state.stdoutAccumulator += data.data;
+      appendOutput(escapeHtml(data.data));
+    });
+
+    window.api.onExecutionStderr(function(data) {
+      if (data.sessionId !== state.activeSessionId) return;
+      state.stderrAccumulator += data.data;
+      appendOutput('<span style="color:var(--color-error);">' + escapeHtml(data.data) + '</span>');
+    });
+
+    window.api.onExecutionExit(function(data) {
+      if (data.sessionId !== state.activeSessionId) return;
+      handleExecutionExit(data.exitCode);
+    });
+
+    window.api.onExecutionTimeout(function(data) {
+      if (data.sessionId !== state.activeSessionId) return;
+      handleExecutionTimeout();
+    });
+
+    window.api.onExecutionError(function(data) {
+      if (data.sessionId !== state.activeSessionId) return;
+      handleExecutionError(data.error);
+    });
+
+    window.api.onExecutionStopped(function(data) {
+      if (data.sessionId !== state.activeSessionId) return;
+      handleExecutionStopped();
+    });
+
+    window.api.onStdinClosed(function(data) {
+      if (data.sessionId !== state.activeSessionId) return;
+      state.stdinOpen = false;
+      updateInputControls();
+    });
+  }
+
+  function appendOutput(html) {
+    var outputEl = document.getElementById('output-content');
+    if (outputEl.querySelector('.output-placeholder')) {
+      outputEl.innerHTML = '';
+    }
+    outputEl.insertAdjacentHTML('beforeend', html);
+    outputEl.scrollTop = outputEl.scrollHeight;
   }
 
   // =========================================================================
@@ -1136,7 +1259,7 @@
       }
     }
 
-    var executionContext = {
+    state.activeExecutionContext = {
       lessonId: currentLessonId,
       source: runSource,
       hasExpectedOutput: hasExpectedOutput,
@@ -1144,9 +1267,15 @@
     };
 
     state.isCompiling = true;
+    state.activeSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    state.stdoutAccumulator = '';
+    state.stderrAccumulator = '';
+    state.stdinOpen = true;
+
     var runBtn = document.getElementById('btn-run-code');
-    runBtn.classList.add('running');
-    runBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Running...';
+    var stopBtn = document.getElementById('btn-stop-code');
+    runBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-flex';
 
     var statusEl = document.getElementById('output-status');
     statusEl.textContent = 'Compiling...';
@@ -1154,102 +1283,209 @@
 
     var outputEl = document.getElementById('output-content');
     outputEl.innerHTML = '<span style="color:var(--text-tertiary);">⏳ Compiling and running...</span>';
+
+    // Switch to output tab first to show compilation progress, but user can switch to input if they want
     setActiveExecutionTab('output');
     renderCheckerResult('NOT_RUN_YET');
+    updateInputControls();
 
     try {
-      var result = await window.api.compileAndRun({
+      var result = await window.api.startExecution({
+        sessionId: state.activeSessionId,
         code: code,
-        stdinInput: '',
         timeoutMs: state.settings.timeout,
       });
 
-      state.progress.runsCount++;
-      saveProgress();
-
-      // Check for night coding achievement
-      var hour = new Date().getHours();
-      if (hour >= 0 && hour < 5) {
-        unlockAchievement('night-owl');
-      }
-
-      checkAchievements();
-
-      if (!result.compiled) {
-        // Compilation failed
-        statusEl.textContent = 'Compile Error';
-        statusEl.className = 'output-status error';
-
-        var errorHtml = '<span style="color:var(--color-error);font-weight:600;">❌ Compilation Failed</span>\n\n';
-        errorHtml += '<span style="color:var(--color-error);">' + escapeHtml(result.compileErrors) + '</span>';
-
-        // Add error explanation
-        var explanation = explainError(result.compileErrors);
-        if (explanation) {
-          errorHtml += '\n\n<div class="error-explanation">' +
-            '<div class="error-explanation-title">💡 ' + escapeHtml(explanation.title) + '</div>' +
-            '<div class="error-explanation-body"><p>' + escapeHtml(explanation.explanation) + '</p></div>' +
-            '<div class="error-suggestion"><strong>Suggestion:</strong> ' + escapeHtml(explanation.suggestion) + '</div>' +
-            '</div>';
-        }
-
-        outputEl.innerHTML = errorHtml;
-        renderCheckerResult('COMPILATION_FAILED');
-      } else {
-        // Compilation succeeded
-        var hasWarnings = result.compileErrors && result.compileErrors.trim();
-
-        if (result.timedOut) {
-          statusEl.textContent = 'Timed Out';
+      if (!result.success) {
+        if (result.phase === 'compile') {
+          var statusEl = document.getElementById('output-status');
+          statusEl.textContent = 'Compile Error';
           statusEl.className = 'output-status error';
-          outputEl.innerHTML = '<span style="color:var(--color-warning);font-weight:600;">⏰ Execution timed out</span>\n\n' +
-            '<span style="color:var(--text-secondary);">Your program took too long to execute. Check for infinite loops.</span>\n\n' +
-            (result.stdout ? '<span style="color:var(--text-primary);">' + escapeHtml(result.stdout) + '</span>' : '');
-          renderCheckerResult('RUNTIME_FAILED');
-        } else if (result.exitCode !== 0) {
-          statusEl.textContent = 'Runtime Error (exit ' + result.exitCode + ')';
-          statusEl.className = 'output-status error';
-          var runtimeHtml = '<span style="color:var(--color-error);font-weight:600;">⚠️ Runtime Error (exit code: ' + result.exitCode + ')</span>\n\n';
-          if (result.stdout) runtimeHtml += escapeHtml(result.stdout) + '\n';
-          if (result.stderr) runtimeHtml += '<span style="color:var(--color-error);">' + escapeHtml(result.stderr) + '</span>';
-          outputEl.innerHTML = runtimeHtml;
-          renderCheckerResult('RUNTIME_FAILED');
+
+          var errorHtml = '<span style="color:var(--color-error);font-weight:600;">❌ Compilation Failed</span>\n\n';
+          errorHtml += '<span style="color:var(--color-error);">' + escapeHtml(result.compilerOutput) + '</span>';
+
+          var explanation = explainError(result.compilerOutput);
+          if (explanation) {
+            errorHtml += '\n\n<div class="error-explanation">' +
+              '<div class="error-explanation-title">💡 ' + escapeHtml(explanation.title) + '</div>' +
+              '<div class="error-explanation-body"><p>' + escapeHtml(explanation.explanation) + '</p></div>' +
+              '<div class="error-suggestion"><strong>Suggestion:</strong> ' + escapeHtml(explanation.suggestion) + '</div>' +
+              '</div>';
+          }
+          document.getElementById('output-content').innerHTML = errorHtml;
+          renderCheckerResult('COMPILATION_FAILED');
         } else {
-          statusEl.textContent = 'Success (' + result.executionTime + 'ms)';
-          statusEl.className = 'output-status success';
-          var successHtml = '';
-          if (hasWarnings) {
-            successHtml += '<span style="color:var(--color-warning);">⚠️ Warnings:\n' + escapeHtml(result.compileErrors) + '</span>\n\n';
-          }
-          successHtml += escapeHtml(result.stdout || '(no output)');
-          outputEl.innerHTML = successHtml;
-
-          // Verify output against expected
-          if (executionContext.lessonId && executionContext.hasExpectedOutput) {
-            var actualRaw = result.stdout || '';
-            var normalizedActual = window.normalizeOutputForComparison ? window.normalizeOutputForComparison(actualRaw) : actualRaw.trim();
-            var normalizedExpected = window.normalizeOutputForComparison ? window.normalizeOutputForComparison(executionContext.expectedOutputRaw) : executionContext.expectedOutputRaw.trim();
-            
-            if (normalizedActual === normalizedExpected) {
-              renderCheckerResult('PASS', actualRaw, executionContext.expectedOutputRaw, normalizedActual, normalizedExpected, executionContext);
-            } else {
-              renderCheckerResult('FAIL', actualRaw, executionContext.expectedOutputRaw, normalizedActual, normalizedExpected, executionContext);
-              setActiveExecutionTab('result');
-            }
-          } else {
-            renderCheckerResult('CHECK_NOT_AVAILABLE');
-          }
+          // This covers spawn failure, IPC failure, or unexpected errors
+          var errorMsg = (result.phase === 'spawn' ? 'Spawn failed: ' :
+                         (result.phase === 'ipc' ? 'IPC execution error: ' : 'Unexpected execution error: ')) +
+                         (result.error || 'Unknown error');
+          handleExecutionError(errorMsg);
         }
+        resetExecutionUI();
+      } else {
+        // Successfully started, compilation passed, running...
+        document.getElementById('output-content').innerHTML = ''; // Clear placeholder
+        var statusEl = document.getElementById('output-status');
+        statusEl.textContent = 'Running...';
+        statusEl.className = 'output-status running';
+        updateInputControls();
+
+        state.progress.runsCount++;
+        saveProgress();
+
+        var hour = new Date().getHours();
+        if (hour >= 0 && hour < 5) {
+          unlockAchievement('night-owl');
+        }
+        checkAchievements();
       }
     } catch (err) {
-      statusEl.textContent = 'Error';
+      handleExecutionError(err.message);
+      resetExecutionUI();
+    }
+  }
+
+  function handleExecutionExit(exitCode) {
+    if (!state.isCompiling) return;
+    state.stdinOpen = false;
+    updateInputControls();
+
+    var statusEl = document.getElementById('output-status');
+    if (exitCode !== 0) {
+      statusEl.textContent = 'Runtime Error (exit ' + exitCode + ')';
       statusEl.className = 'output-status error';
-      outputEl.innerHTML = '<span style="color:var(--color-error);">' + escapeHtml(err.message || 'Unknown error') + '</span>';
+      appendOutput('\n<span style="color:var(--color-error);font-weight:600;">⚠️ Runtime Error (exit code: ' + exitCode + ')</span>\n');
       renderCheckerResult('RUNTIME_FAILED');
-    } finally {
-      state.isCompiling = false;
-      runBtn.classList.remove('running');
-      runBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run';
+    } else {
+      statusEl.textContent = 'Success';
+      statusEl.className = 'output-status success';
+
+      // Verify output
+      if (state.activeExecutionContext.lessonId && state.activeExecutionContext.hasExpectedOutput) {
+        var actualRaw = state.stdoutAccumulator;
+        var normalizedActual = window.normalizeOutputForComparison ? window.normalizeOutputForComparison(actualRaw) : actualRaw.trim();
+        var normalizedExpected = window.normalizeOutputForComparison ? window.normalizeOutputForComparison(state.activeExecutionContext.expectedOutputRaw) : state.activeExecutionContext.expectedOutputRaw.trim();
+
+        if (normalizedActual === normalizedExpected) {
+          renderCheckerResult('PASS', actualRaw, state.activeExecutionContext.expectedOutputRaw, normalizedActual, normalizedExpected, state.activeExecutionContext);
+        } else {
+          renderCheckerResult('FAIL', actualRaw, state.activeExecutionContext.expectedOutputRaw, normalizedActual, normalizedExpected, state.activeExecutionContext);
+          setActiveExecutionTab('result');
+        }
+      } else {
+        renderCheckerResult('CHECK_NOT_AVAILABLE');
+      }
+    }
+    resetExecutionUI();
+  }
+
+  function handleExecutionTimeout() {
+    if (!state.isCompiling) return;
+    state.stdinOpen = false;
+    updateInputControls();
+    var statusEl = document.getElementById('output-status');
+    statusEl.textContent = 'Timed Out';
+    statusEl.className = 'output-status error';
+    appendOutput('\n<span style="color:var(--color-warning);font-weight:600;">⏰ Execution timed out</span>\n<span style="color:var(--text-secondary);">Your program took too long to execute. Check for infinite loops or waiting for input indefinitely.</span>\n');
+    renderCheckerResult('RUNTIME_FAILED');
+    resetExecutionUI();
+  }
+
+  function handleExecutionError(errorStr) {
+    if (!state.isCompiling) return;
+    state.stdinOpen = false;
+    updateInputControls();
+    var statusEl = document.getElementById('output-status');
+    statusEl.textContent = 'Error';
+    statusEl.className = 'output-status error';
+    appendOutput('\n<span style="color:var(--color-error);">' + escapeHtml(errorStr || 'Unknown error') + '</span>\n');
+    renderCheckerResult('RUNTIME_FAILED');
+  }
+
+  function handleExecutionStopped() {
+    if (!state.isCompiling) return;
+    state.stdinOpen = false;
+    updateInputControls();
+    var statusEl = document.getElementById('output-status');
+    statusEl.textContent = 'Stopped';
+    statusEl.className = 'output-status error';
+    appendOutput('\n<span style="color:var(--color-warning);">🛑 Execution stopped by user.</span>\n');
+    renderCheckerResult('RUNTIME_FAILED');
+    resetExecutionUI();
+  }
+
+  function resetExecutionUI() {
+    state.isCompiling = false;
+    state.activeSessionId = null;
+    state.stdinOpen = false;
+    document.getElementById('btn-run-code').style.display = 'inline-flex';
+    document.getElementById('btn-stop-code').style.display = 'none';
+    updateInputControls();
+  }
+
+  async function stopExecution() {
+    if (state.activeSessionId && state.isCompiling) {
+      await window.api.stopExecution({ sessionId: state.activeSessionId });
+    }
+  }
+
+  async function sendInput() {
+    if (!state.isCompiling || !state.stdinOpen || !state.activeSessionId) return;
+    var textarea = document.getElementById('stdin-textarea');
+    var text = textarea.value;
+    if (!text) return;
+
+    text += '\n';
+    var res = await window.api.sendStdin({ sessionId: state.activeSessionId, input: text });
+    if (res && res.success) {
+      var historyEl = document.getElementById('input-history');
+      if (historyEl.querySelector('.output-placeholder')) {
+        historyEl.innerHTML = '';
+      }
+      var item = document.createElement('div');
+      item.className = 'input-history-item sent';
+      item.textContent = '> ' + text;
+      historyEl.appendChild(item);
+      historyEl.scrollTop = historyEl.scrollHeight;
+
+      textarea.value = '';
+    } else {
+      console.error('Failed to send input:', res?.error);
+    }
+  }
+
+  async function closeInput() {
+    if (!state.isCompiling || !state.stdinOpen || !state.activeSessionId) return;
+    await window.api.closeStdin({ sessionId: state.activeSessionId });
+  }
+
+  function updateInputControls() {
+    var isRunning = state.isCompiling && state.activeSessionId !== null;
+    var canInput = isRunning && state.stdinOpen;
+
+    var textarea = document.getElementById('stdin-textarea');
+    var sendBtn = document.getElementById('btn-send-input');
+    var closeBtn = document.getElementById('btn-close-input');
+    var statusText = document.getElementById('input-status-text');
+
+    if (canInput) {
+      textarea.disabled = false;
+      sendBtn.disabled = false;
+      closeBtn.disabled = false;
+      statusText.textContent = 'Running (Input Open)';
+      statusText.className = 'input-status-indicator running';
+    } else {
+      textarea.disabled = true;
+      sendBtn.disabled = true;
+      closeBtn.disabled = true;
+      if (isRunning) {
+        statusText.textContent = 'Running (Input Closed)';
+        statusText.className = 'input-status-indicator waiting';
+      } else {
+        statusText.textContent = 'Not running';
+        statusText.className = 'input-status-indicator';
+      }
     }
   }
 
@@ -1266,6 +1502,7 @@
     });
     document.getElementById('output-content').style.display = (tabId === 'output') ? 'block' : 'none';
     document.getElementById('verification-panel').style.display = (tabId === 'result') ? 'block' : 'none';
+    document.getElementById('input-panel').style.display = (tabId === 'input') ? 'flex' : 'none';
   }
 
   function renderCheckerResult(status, actualRaw, expectedRaw, normalizedActual, normalizedExpected, executionContext) {
@@ -1287,7 +1524,7 @@
 
       if (executionContext && executionContext.lessonId) {
         completeLesson(executionContext.lessonId);
-        
+
         if (executionContext.source === 'exercise') {
           if (state.progress.completedExercises.indexOf(executionContext.lessonId) === -1) {
             state.progress.completedExercises.push(executionContext.lessonId);
@@ -1298,7 +1535,7 @@
       }
     } else if (status === 'FAIL') {
       verifyContent.className = 'verification-content fail';
-      
+
       var header = document.createElement('div');
       header.innerHTML = '❌ <strong>Output does not match expected result.</strong><br><br><strong>Expected:</strong>';
       verifyContent.appendChild(header);
@@ -1401,6 +1638,10 @@
         '</svg>' +
         '<span>Click <strong>Run</strong> or press <kbd>Ctrl+Enter</kbd> to compile and execute</span>' +
       '</div>';
+
+    document.getElementById('input-history').innerHTML =
+      '<div class="output-placeholder"><span>Standard input history will appear here.</span></div>';
+
     document.getElementById('output-status').textContent = '';
     document.getElementById('output-status').className = 'output-status';
     renderCheckerResult('NOT_RUN_YET');

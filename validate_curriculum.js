@@ -30,6 +30,7 @@ const chapterFiles = [
 let totalChaptersScanned = 0;
 let totalLessonsScanned = 0;
 let deterministicExamplesExecuted = 0;
+let skippedStdinExamples = 0;
 let passes = 0;
 let failures = [];
 let floatingPointIssues = [];
@@ -41,10 +42,10 @@ if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 chapterFiles.forEach(file => {
   const fullPath = path.join(LESSON_DATA_DIR, file);
   if (!fs.existsSync(fullPath)) return;
-  
+
   // Clean window.CPP_CHAPTERS for isolation
   window.CPP_CHAPTERS = [];
-  
+
   // Evaluate the IIFE safely
   const code = fs.readFileSync(fullPath, 'utf8');
   eval(code);
@@ -70,11 +71,17 @@ chapterFiles.forEach(file => {
 
       // Execute code if expectedOutput is deterministic
       if (lesson.expectedOutput !== null && lesson.expectedOutput !== undefined) {
+        const hasStdin = /\b(cin|getline)\b/.test(lesson.codeExample);
+        if (hasStdin && !lesson.stdinFixture) {
+          skippedStdinExamples++;
+          return;
+        }
+
         deterministicExamplesExecuted++;
-        
+
         const cppFile = path.join(tempDir, 'main.cpp');
         const exeFile = path.join(tempDir, process.platform === 'win32' ? 'main.exe' : 'main');
-        
+
         fs.writeFileSync(cppFile, lesson.codeExample);
 
         try {
@@ -107,7 +114,7 @@ chapterFiles.forEach(file => {
                 title: lesson.title
               });
             }
-            
+
             const diffMsg = checker.findFirstDifference(normalizedActual, normalizedExpected);
             failures.push({
               chapterId: chapter.id,
@@ -141,6 +148,7 @@ console.log("==========================================");
 console.log(`Chapters scanned: ${totalChaptersScanned}`);
 console.log(`Lessons scanned: ${totalLessonsScanned}`);
 console.log(`Deterministic examples compiled/executed: ${deterministicExamplesExecuted}`);
+console.log(`Stdin-dependent examples skipped: ${skippedStdinExamples}`);
 console.log(`Passes: ${passes}`);
 console.log(`Failures: ${failures.length}`);
 

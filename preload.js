@@ -27,21 +27,37 @@ contextBridge.exposeInMainWorld('api', {
    */
   checkCompiler: () => ipcRenderer.invoke('check-compiler'),
 
-  /**
-   * Compile and run C++ code.
-   * @param {Object} options
-   * @param {string} options.code - The C++ source code to compile and run
-   * @param {string} [options.stdinInput] - Optional stdin input for the program
-   * @param {number} [options.timeoutMs] - Execution timeout in milliseconds (default: 10000)
-   * @returns {Promise<{
-   *   compiled: boolean,
-   *   compileErrors: string,
-   *   stdout: string,
-   *   stderr: string,
-   *   exitCode: number,
-   *   executionTime: number,
-   *   timedOut: boolean
-   * }>}
-   */
-  compileAndRun: (options) => ipcRenderer.invoke('compile-and-run', options),
+  startExecution: (options) => ipcRenderer.invoke('start-execution', options),
+  sendStdin: (options) => ipcRenderer.invoke('send-stdin', options),
+  closeStdin: (options) => ipcRenderer.invoke('close-stdin', options),
+  stopExecution: (options) => ipcRenderer.invoke('stop-execution', options),
+
+  onExecutionStdout: (callback) => {
+    ipcRenderer.removeAllListeners('execution-stdout');
+    ipcRenderer.on('execution-stdout', (_, data) => callback(data));
+  },
+  onExecutionStderr: (callback) => {
+    ipcRenderer.removeAllListeners('execution-stderr');
+    ipcRenderer.on('execution-stderr', (_, data) => callback(data));
+  },
+  onExecutionExit: (callback) => {
+    ipcRenderer.removeAllListeners('execution-exit');
+    ipcRenderer.on('execution-exit', (_, data) => callback(data));
+  },
+  onExecutionTimeout: (callback) => {
+    ipcRenderer.removeAllListeners('execution-timeout');
+    ipcRenderer.on('execution-timeout', (_, data) => callback(data));
+  },
+  onExecutionError: (callback) => {
+    ipcRenderer.removeAllListeners('execution-error');
+    ipcRenderer.on('execution-error', (_, data) => callback(data));
+  },
+  onExecutionStopped: (callback) => {
+    ipcRenderer.removeAllListeners('execution-stopped');
+    ipcRenderer.on('execution-stopped', (_, data) => callback(data));
+  },
+  onStdinClosed: (callback) => {
+    ipcRenderer.removeAllListeners('stdin-closed');
+    ipcRenderer.on('stdin-closed', (_, data) => callback(data));
+  },
 });

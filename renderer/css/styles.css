@@ -2385,3 +2385,116 @@ a:hover {
   opacity: 0.3;
   transition: 0s;
 }
+
+/* --------------------------------------------------------------------------
+   Vertical Resizer & Input Panel
+   -------------------------------------------------------------------------- */
+.resize-handle-vertical {
+  height: 5px;
+  cursor: row-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  transition: background var(--duration-fast) var(--ease-smooth);
+  flex-shrink: 0;
+}
+
+.resize-handle-vertical:hover,
+.resize-handle-vertical.active {
+  background: var(--accent-start);
+}
+
+.input-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex: 1;
+}
+
+.input-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.input-controls {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+}
+
+.input-status-bar {
+  padding: 4px 12px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.input-status-indicator {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.input-status-indicator.running {
+  color: var(--accent-start);
+}
+
+.input-status-indicator.waiting {
+  color: var(--color-warning);
+}
+
+.input-status-indicator.closed {
+  color: var(--color-error);
+}
+
+.input-form {
+  display: flex;
+  padding: 8px 12px;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.stdin-textarea {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  padding: 8px 12px;
+  resize: none;
+  min-height: 38px;
+  max-height: 80px;
+  transition: border-color var(--duration-fast);
+}
+
+.stdin-textarea:focus {
+  outline: none;
+  border-color: var(--accent-start);
+}
+
+.stdin-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-history-item {
+  margin-bottom: 4px;
+}
+
+.input-history-item.sent {
+  color: var(--accent-start);
+}
