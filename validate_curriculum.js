@@ -79,8 +79,9 @@ chapterFiles.forEach(file => {
 
         deterministicExamplesExecuted++;
 
-        const cppFile = path.join(tempDir, 'main.cpp');
-        const exeFile = path.join(tempDir, process.platform === 'win32' ? 'main.exe' : 'main');
+        const timestamp = Date.now() + '_' + Math.floor(Math.random() * 10000);
+        const cppFile = path.join(tempDir, `validate_${timestamp}.cpp`);
+        const exeFile = path.join(tempDir, process.platform === 'win32' ? `validate_${timestamp}.exe` : `validate_${timestamp}`);
 
         fs.writeFileSync(cppFile, lesson.codeExample);
 
@@ -136,6 +137,10 @@ chapterFiles.forEach(file => {
             error: 'RUNTIME_FAILED',
             details: e.stderr ? e.stderr.toString() : e.message
           });
+        } finally {
+          // Cleanup
+          try { if (fs.existsSync(cppFile)) fs.unlinkSync(cppFile); } catch (e) {}
+          try { if (fs.existsSync(exeFile)) fs.unlinkSync(exeFile); } catch (e) {}
         }
       }
     });
@@ -153,6 +158,7 @@ console.log(`Passes: ${passes}`);
 console.log(`Failures: ${failures.length}`);
 
 if (failures.length > 0) {
+  process.exitCode = 1;
   console.log("\n--- FAILURES ---");
   failures.forEach(f => {
     console.log(`\n[Chapter ${f.chapterId} | Lesson ${f.lessonId}: ${f.title}] - ${f.error}`);

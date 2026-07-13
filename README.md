@@ -157,6 +157,16 @@ Edit the `g++` arguments in `main.js` in the `compile-and-run` handler.
 
 ---
 
+## Development Verification
+
+To ensure the repository is healthy during development, you can use the following commands:
+
+- `npm test`: runs permanent automated regression tests
+- `npm run validate`: compiles/runs deterministic curriculum examples and checks expected output
+- `npm run verify`: runs syntax checks, automated tests, and curriculum validation
+
+---
+
 ## Troubleshooting
 
 | Issue | Solution |

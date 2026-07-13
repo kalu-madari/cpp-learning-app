@@ -154,188 +154,54 @@ ipcMain.handle('check-compiler', async () => {
 // ---------------------------------------------------------------------------
 // C++ Compilation & Execution
 // ---------------------------------------------------------------------------
-let activeSessions = {};
+const ExecutionManager = require('./lib/execution-manager.js');
+const executionManager = new ExecutionManager(TEMP_DIR);
 
-function killProcess(proc) {
-  if (!proc) return;
-  try {
-    if (process.platform === 'win32') {
-      exec(`taskkill /pid ${proc.pid} /t /f`);
-    } else {
-      proc.kill();
-    }
-  } catch (e) {
-    // Ignore
-  }
-}
-
-ipcMain.handle('start-execution', async (event, { code, sessionId, timeoutMs }) => {
-  const timestamp = Date.now();
-  const sourceFile = path.join(TEMP_DIR, `code_${timestamp}.cpp`);
-  const outputFile = path.join(TEMP_DIR, `code_${timestamp}.exe`);
-  const timeout = timeoutMs || 10000;
-
-  try {
-    fs.writeFileSync(sourceFile, code, 'utf-8');
-
-    // Step 1: Compile
-    const compileResult = await runProcess('g++', [
-      '-std=c++17',
-      '-Wall',
-      '-Wextra',
-      '-o', outputFile,
-      sourceFile,
-    ], { timeout: 30000 });
-
-    if (compileResult.exitCode !== 0) {
-      return {
-        success: false,
-        phase: 'compile',
-        error: 'Compilation failed',
-        compilerOutput: compileResult.stderr,
-      };
-    }
-
-    // Step 2: Execute
-    // Cleanup any existing session with this ID
-    if (activeSessions[sessionId]) {
-      killProcess(activeSessions[sessionId].proc);
-    }
-
-    const proc = spawn(outputFile, [], {
-      cwd: TEMP_DIR,
-      windowsHide: true,
-    });
-
-    let isTimeout = false;
-    let timer = setTimeout(() => {
-      isTimeout = true;
-      killProcess(proc);
-    }, timeout);
-
-    const session = {
-      proc,
-      timer,
-      sourceFile,
-      outputFile,
-    };
-    activeSessions[sessionId] = session;
-
-    proc.stdout.on('data', (data) => {
-      event.sender.send('execution-stdout', { sessionId, data: data.toString() });
-    });
-
-    proc.stderr.on('data', (data) => {
-      event.sender.send('execution-stderr', { sessionId, data: data.toString() });
-    });
-
-    proc.on('close', (code, signal) => {
-      clearTimeout(timer);
-      delete activeSessions[sessionId];
-
-      setTimeout(() => {
-        try { fs.unlinkSync(sourceFile); } catch {}
-        try { fs.unlinkSync(outputFile); } catch {}
-      }, 1000);
-
-      if (isTimeout) {
-        event.sender.send('execution-timeout', { sessionId });
-      } else if (signal === 'SIGTERM' || signal === 'SIGKILL' || (code === null && signal != null)) {
-        event.sender.send('execution-stopped', { sessionId });
-      } else {
-        event.sender.send('execution-exit', { sessionId, exitCode: code });
-      }
-    });
-
-    proc.on('error', (err) => {
-      event.sender.send('execution-error', { sessionId, error: err.message });
-    });
-
-    return {
-      success: true,
-      sessionId: sessionId,
-      started: true
-    };
-  } catch (err) {
-    return {
-      success: false,
-      phase: 'ipc',
-      error: err.message,
-    };
-  }
+ipcMain.handle('start-execution', async (event, options) => {
+  return await executionManager.startExecution(options, {
+    onStdout: (sessionId, data) => event.sender.send('execution-stdout', { sessionId, data }),
+    onStderr: (sessionId, data) => event.sender.send('execution-stderr', { sessionId, data }),
+    onTimeout: (sessionId) => event.sender.send('execution-timeout', { sessionId }),
+    onStopped: (sessionId) => event.sender.send('execution-stopped', { sessionId }),
+    onExit: (sessionId, exitCode) => event.sender.send('execution-exit', { sessionId, exitCode }),
+    onError: (sessionId, error) => event.sender.send('execution-error', { sessionId, error })
+  });
 });
 
 ipcMain.handle('send-stdin', async (event, { sessionId, input }) => {
-  const session = activeSessions[sessionId];
-  if (session && session.proc && session.proc.stdin && session.proc.stdin.writable) {
-    try {
-      session.proc.stdin.write(input);
-      return { success: true, sessionId };
-    } catch (e) {
-      return { success: false, sessionId, error: e.message };
-    }
-  }
-  return { success: false, sessionId, error: 'Session or writable stdin not found' };
+  return executionManager.sendStdin(sessionId, input);
 });
 
 ipcMain.handle('close-stdin', async (event, { sessionId }) => {
-  const session = activeSessions[sessionId];
-  if (session && session.proc && session.proc.stdin && !session.proc.stdin.destroyed) {
-    try {
-      session.proc.stdin.end();
-      event.sender.send('stdin-closed', { sessionId });
-      return { success: true, sessionId };
-    } catch (e) {
-      return { success: false, sessionId, error: e.message };
-    }
+  const result = executionManager.closeStdin(sessionId);
+  if (result.success) {
+    event.sender.send('stdin-closed', { sessionId });
   }
-  return { success: false, sessionId, error: 'Session or valid stdin not found' };
+  return result;
 });
 
 ipcMain.handle('stop-execution', async (event, { sessionId }) => {
-  if (activeSessions[sessionId]) {
-    killProcess(activeSessions[sessionId].proc);
-    return { success: true, sessionId };
-  }
-  return { success: false, sessionId, error: 'Session not found' };
+  return executionManager.stopExecution(sessionId);
 });
 
-// ---------------------------------------------------------------------------
-// Process Runner Helper
-// ---------------------------------------------------------------------------
-function runProcess(command, args, options = {}) {
-  return new Promise((resolve) => {
-    const { timeout = 10000, stdinInput = '' } = options;
+let shutdownInProgress = false;
 
-    const proc = execFile(command, args, {
-      timeout,
-      maxBuffer: 1024 * 1024, // 1MB buffer
-      windowsHide: true,
-    }, (error, stdout, stderr) => {
-      if (error && error.killed) {
-        resolve({
-          stdout: stdout || '',
-          stderr: stderr || 'Process timed out and was terminated.',
-          exitCode: -1,
-          timedOut: true,
-        });
-      } else {
-        resolve({
-          stdout: stdout || '',
-          stderr: stderr || '',
-          exitCode: error ? error.code || 1 : 0,
-          timedOut: false,
-        });
-      }
-    });
+app.on('before-quit', async (event) => {
+  if (shutdownInProgress) return;
+  if (Object.keys(executionManager.activeSessions).length === 0) return;
 
-    // Send stdin if provided
-    if (stdinInput && proc.stdin) {
-      proc.stdin.write(stdinInput);
-      proc.stdin.end();
-    }
-  });
-}
+  event.preventDefault();
+  shutdownInProgress = true;
+
+  try {
+    await executionManager.stopAll();
+  } catch (err) {
+    console.error('Error during shutdown cleanup:', err);
+  } finally {
+    app.quit();
+  }
+});
+
 
 // ---------------------------------------------------------------------------
 // Temp File Cleanup
