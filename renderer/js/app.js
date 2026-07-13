@@ -585,8 +585,7 @@
     // Output tabs
     document.querySelectorAll('.output-tab').forEach(function (tab) {
       tab.addEventListener('click', function () {
-        document.querySelectorAll('.output-tab').forEach(function (t) { t.classList.remove('active'); });
-        tab.classList.add('active');
+        setActiveExecutionTab(tab.getAttribute('data-tab'));
       });
     });
 
@@ -1125,6 +1124,8 @@
 
     var outputEl = document.getElementById('output-content');
     outputEl.innerHTML = '<span style="color:var(--text-tertiary);">⏳ Compiling and running...</span>';
+    setActiveExecutionTab('output');
+    renderCheckerResult('NOT_RUN_YET');
 
     try {
       var result = await window.api.compileAndRun({
@@ -1163,6 +1164,7 @@
         }
 
         outputEl.innerHTML = errorHtml;
+        renderCheckerResult('COMPILATION_FAILED');
       } else {
         // Compilation succeeded
         var hasWarnings = result.compileErrors && result.compileErrors.trim();
@@ -1173,6 +1175,7 @@
           outputEl.innerHTML = '<span style="color:var(--color-warning);font-weight:600;">⏰ Execution timed out</span>\n\n' +
             '<span style="color:var(--text-secondary);">Your program took too long to execute. Check for infinite loops.</span>\n\n' +
             (result.stdout ? '<span style="color:var(--text-primary);">' + escapeHtml(result.stdout) + '</span>' : '');
+          renderCheckerResult('RUNTIME_FAILED');
         } else if (result.exitCode !== 0) {
           statusEl.textContent = 'Runtime Error (exit ' + result.exitCode + ')';
           statusEl.className = 'output-status error';
@@ -1180,6 +1183,7 @@
           if (result.stdout) runtimeHtml += escapeHtml(result.stdout) + '\n';
           if (result.stderr) runtimeHtml += '<span style="color:var(--color-error);">' + escapeHtml(result.stderr) + '</span>';
           outputEl.innerHTML = runtimeHtml;
+          renderCheckerResult('RUNTIME_FAILED');
         } else {
           statusEl.textContent = 'Success (' + result.executionTime + 'ms)';
           statusEl.className = 'output-status success';
@@ -1189,17 +1193,27 @@
           }
           successHtml += escapeHtml(result.stdout || '(no output)');
           outputEl.innerHTML = successHtml;
-        }
 
-        // Verify output against expected
-        if (state.currentLesson && state.currentLesson.expectedOutput && result.exitCode === 0) {
-          verifyOutput(result.stdout, state.currentLesson.expectedOutput);
+          // Verify output against expected
+          if (state.currentLesson && state.currentLesson.expectedOutput !== undefined && state.currentLesson.expectedOutput !== null) {
+            var normalizedActual = (result.stdout || '').trim();
+            var normalizedExpected = (state.currentLesson.expectedOutput || '').trim();
+            if (normalizedActual === normalizedExpected) {
+              renderCheckerResult('PASS');
+            } else {
+              renderCheckerResult('FAIL', result.stdout || '', state.currentLesson.expectedOutput);
+              setActiveExecutionTab('result');
+            }
+          } else {
+            renderCheckerResult('CHECK_NOT_AVAILABLE');
+          }
         }
       }
     } catch (err) {
       statusEl.textContent = 'Error';
       statusEl.className = 'output-status error';
       outputEl.innerHTML = '<span style="color:var(--color-error);">' + escapeHtml(err.message || 'Unknown error') + '</span>';
+      renderCheckerResult('RUNTIME_FAILED');
     } finally {
       state.isCompiling = false;
       runBtn.classList.remove('running');
@@ -1208,27 +1222,39 @@
   }
 
   // =========================================================================
-  // Output Verification
+  // Output Verification & Result Tab
   // =========================================================================
-  function verifyOutput(actual, expected) {
-    var verifyPanel = document.getElementById('verification-panel');
+  function setActiveExecutionTab(tabId) {
+    document.querySelectorAll('.output-tab').forEach(function (t) {
+      if (t.getAttribute('data-tab') === tabId) {
+        t.classList.add('active');
+      } else {
+        t.classList.remove('active');
+      }
+    });
+    document.getElementById('output-content').style.display = (tabId === 'output') ? 'block' : 'none';
+    document.getElementById('verification-panel').style.display = (tabId === 'result') ? 'block' : 'none';
+  }
+
+  function renderCheckerResult(status, actual, expected) {
     var verifyContent = document.getElementById('verification-content');
+    verifyContent.innerHTML = ''; // safe clear
+    verifyContent.className = 'verification-content';
 
-    verifyPanel.style.display = 'block';
-
-    // Normalize whitespace for comparison
-    var normalizedActual = (actual || '').trim();
-    var normalizedExpected = (expected || '').trim();
-
-    if (normalizedActual === normalizedExpected) {
+    if (status === 'NOT_RUN_YET') {
+      verifyContent.innerHTML = '<div class="output-placeholder"><span>Run the code to see the result.</span></div>';
+    } else if (status === 'CHECK_NOT_AVAILABLE') {
+      verifyContent.innerHTML = '<span style="color:var(--text-secondary);">No automatic output check is available for this exercise.</span>';
+    } else if (status === 'COMPILATION_FAILED') {
+      verifyContent.innerHTML = '<span style="color:var(--text-secondary);">Result unavailable because compilation failed.</span>';
+    } else if (status === 'RUNTIME_FAILED') {
+      verifyContent.innerHTML = '<span style="color:var(--text-secondary);">Result unavailable because the program did not complete successfully.</span>';
+    } else if (status === 'PASS') {
       verifyContent.className = 'verification-content pass';
-      verifyContent.innerHTML = '✅ <strong>Output matches!</strong> Your code produces the expected result.';
+      verifyContent.innerHTML = '✅ <strong>Output matches expected result.</strong>';
 
-      // Mark lesson and exercise as completed
       if (state.currentLesson) {
         completeLesson(state.currentLesson.id);
-
-        // Check if this was an exercise
         var code = getEditorCode();
         if (state.currentLesson.exercise && code !== state.currentLesson.codeExample) {
           if (state.progress.completedExercises.indexOf(state.currentLesson.id) === -1) {
@@ -1238,13 +1264,32 @@
           }
         }
       }
-    } else {
+    } else if (status === 'FAIL') {
       verifyContent.className = 'verification-content fail';
-      verifyContent.innerHTML =
-        '❌ <strong>Output does not match expected result.</strong>\n\n' +
-        '<strong>Expected:</strong>\n<div class="expected-output">' + escapeHtml(normalizedExpected) + '</div>' +
-        '<strong>Your output:</strong>\n<div class="actual-output">' + escapeHtml(normalizedActual) + '</div>' +
-        '<p style="margin-top:8px;color:var(--text-secondary);">Review your code and try again. Check for typos, missing spaces, or newline differences.</p>';
+      
+      var header = document.createElement('div');
+      header.innerHTML = '❌ <strong>Output does not match expected result.</strong><br><br><strong>Expected:</strong>';
+      verifyContent.appendChild(header);
+
+      var expectedDiv = document.createElement('div');
+      expectedDiv.className = 'expected-output';
+      expectedDiv.textContent = expected;
+      verifyContent.appendChild(expectedDiv);
+
+      var yourOutputLabel = document.createElement('div');
+      yourOutputLabel.innerHTML = '<strong>Your output:</strong>';
+      verifyContent.appendChild(yourOutputLabel);
+
+      var actualDiv = document.createElement('div');
+      actualDiv.className = 'actual-output';
+      actualDiv.textContent = actual;
+      verifyContent.appendChild(actualDiv);
+
+      var footer = document.createElement('p');
+      footer.style.marginTop = '8px';
+      footer.style.color = 'var(--text-secondary)';
+      footer.textContent = 'Review your code and try again. Check for typos, missing spaces, or newline differences.';
+      verifyContent.appendChild(footer);
     }
   }
 
@@ -1316,7 +1361,8 @@
       '</div>';
     document.getElementById('output-status').textContent = '';
     document.getElementById('output-status').className = 'output-status';
-    document.getElementById('verification-panel').style.display = 'none';
+    renderCheckerResult('NOT_RUN_YET');
+    setActiveExecutionTab('output');
   }
 
   // =========================================================================
