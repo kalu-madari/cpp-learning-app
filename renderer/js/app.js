@@ -587,6 +587,10 @@
     // Editor toolbar
     document.getElementById('btn-run-code').addEventListener('click', compileAndRun);
     document.getElementById('btn-stop-code').addEventListener('click', stopExecution);
+    var btnExample = document.getElementById('btn-example-code');
+    if (btnExample) {
+      btnExample.addEventListener('click', loadExampleCode);
+    }
     document.getElementById('btn-reset-code').addEventListener('click', resetCode);
     document.getElementById('btn-format-code').addEventListener('click', formatCode);
     document.getElementById('btn-clear-output').addEventListener('click', clearOutput);
@@ -1593,6 +1597,37 @@
       showToast('Code reset to original', 'info');
     }
   }
+
+  function loadExampleCode() {
+    if (!state.currentLesson) {
+      showToast('No active lesson', 'warning');
+      return;
+    }
+
+    // Check if currentLesson is just an ID (string) or an object
+    var lessonId = typeof state.currentLesson === 'object' ? state.currentLesson.id : state.currentLesson;
+    var lesson = findLesson(lessonId);
+
+    if (!lesson || typeof lesson.codeExample !== 'string') {
+      showToast('No example code available for this lesson', 'warning');
+      return;
+    }
+
+    if (!state.editor || !state.editor.getModel) {
+      showToast('Editor is not available', 'error');
+      return;
+    }
+
+    var model = state.editor.getModel();
+    state.editor.executeEdits('load-example', [{
+      range: model.getFullModelRange(),
+      text: lesson.codeExample
+    }]);
+    state.editor.focus();
+    showToast('Loaded canonical example', 'info');
+  }
+
+
 
   function formatCode() {
     // Basic formatting: fix indentation
