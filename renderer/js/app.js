@@ -134,6 +134,8 @@
     originalCode: '',
     editorMode: 'example', // Tracks if the editor currently shows an example or exercise
     activeSessionId: null,
+    activeExerciseIndex: 0,
+    openEndedRunCompleted: false,
     activeExecutionContext: null,
     stdoutAccumulator: '',
     stderrAccumulator: '',
@@ -253,6 +255,14 @@
   // =========================================================================
   // Data Access Helpers
   // =========================================================================
+  function normalizeExerciseData(lesson) {
+    if (!lesson) return [];
+    if (lesson.exercises !== undefined && lesson.exercises !== null) return lesson.exercises;
+    if (lesson.exercise) return [lesson.exercise];
+    return [];
+  }
+
+  // =========================================================================
   function getChapters() {
     return (window.LESSONS_DATA && window.LESSONS_DATA.chapters) || [];
   }
@@ -301,8 +311,38 @@
     return state.progress.completedLessons.indexOf(lessonId) !== -1;
   }
 
-  function isExerciseCompleted(lessonId) {
-    return state.progress.completedExercises.indexOf(lessonId) !== -1;
+  function isExerciseCompleted(lessonId, index) {
+    if (!state.progress || !state.progress.completedExercises) return false;
+
+    // Legacy exact match fallback
+    if (state.progress.completedExercises.indexOf(lessonId) !== -1) return true;
+
+    // Specific indexed check
+    if (index !== undefined) {
+      return state.progress.completedExercises.indexOf(lessonId + ':' + index) !== -1;
+    }
+
+    // Suite check: Are ALL checkable exercises in this lesson completed?
+    var lesson = findLesson(lessonId);
+    if (!lesson) return false;
+    var exList = normalizeExerciseData(lesson);
+    if (exList.length === 0) return false;
+
+    var allCheckableCompleted = true;
+    var hasCheckable = false;
+    for (var i = 0; i < exList.length; i++) {
+      if (exList[i].expectedOutput !== undefined && exList[i].expectedOutput !== null) {
+        hasCheckable = true;
+        if (state.progress.completedExercises.indexOf(lessonId + ':' + i) === -1) {
+          allCheckableCompleted = false;
+          break;
+        }
+      }
+    }
+
+    // If no checkable exercises exist, it cannot be automatically completed
+    if (!hasCheckable) return false;
+    return allCheckableCompleted;
   }
 
   function isBookmarked(lessonId) {
@@ -649,12 +689,42 @@
 
     // Load exercise
     document.getElementById('btn-load-exercise').addEventListener('click', function () {
-      if (state.currentLesson && state.currentLesson.exercise) {
-        setEditorCode(state.currentLesson.exercise.starterCode);
-        state.originalCode = state.currentLesson.exercise.starterCode;
-        state.editorMode = 'exercise';
-        showToast('Exercise loaded into editor', 'info');
+      if (state.currentLesson) {
+        var exList = normalizeExerciseData(state.currentLesson);
+        if (exList.length > 0) {
+          state.activeExerciseIndex = 0;
+          state.openEndedRunCompleted = false;
+          setEditorCode(exList[0].starterCode);
+          state.originalCode = exList[0].starterCode;
+          state.editorMode = 'exercise';
+          showToast('Exercise loaded into editor', 'info');
+        }
       }
+    });
+
+    // We also need to bind dynamic buttons. We can just use event delegation on the document for any button with id starting with btn-load-exercise-
+    document.addEventListener('click', function(e) {
+      if (e.target && e.target.id && e.target.id.startsWith('btn-load-exercise-')) {
+        var idx = parseInt(e.target.id.replace('btn-load-exercise-', ''));
+        if (state.currentLesson && !isNaN(idx)) {
+          var exList = normalizeExerciseData(state.currentLesson);
+          if (exList.length > idx) {
+            state.activeExerciseIndex = idx;
+            state.openEndedRunCompleted = false;
+            setEditorCode(exList[idx].starterCode);
+            state.originalCode = exList[idx].starterCode;
+            state.editorMode = 'exercise';
+            showToast('Exercise ' + (idx + 1) + ' loaded into editor', 'info');
+          }
+        }
+      }
+    });
+
+    // Bind mark complete button
+    document.getElementById('btn-mark-lesson-complete').addEventListener('click', function() {
+        if (state.currentLesson) {
+            completeLesson(state.currentLesson.id);
+        }
     });
 
     // Resize handle
@@ -1086,6 +1156,8 @@
     }
 
     state.currentLesson = lesson;
+    state.activeExerciseIndex = 0;
+    state.openEndedRunCompleted = false;
     state.currentLessonStartTime = Date.now();
     saveLastLesson(lessonId);
 
@@ -1126,20 +1198,64 @@
 
     // Exercise section
     var exerciseSection = document.getElementById('lesson-exercise-section');
-    if (lesson.exercise) {
+    var exList = normalizeExerciseData(lesson);
+    if (exList.length > 0) {
       exerciseSection.style.display = 'block';
-      document.getElementById('exercise-instruction').textContent = lesson.exercise.instruction;
-      var hintsEl = document.getElementById('exercise-hints');
-      hintsEl.innerHTML = '';
-      if (lesson.exercise.hints && lesson.exercise.hints.length > 0) {
-        lesson.exercise.hints.forEach(function (hint) {
-          var hintDiv = document.createElement('div');
-          hintDiv.className = 'exercise-hint hidden-text';
-          hintDiv.innerHTML = '<span>' + escapeHtml(hint) + '</span>';
-          hintDiv.title = 'Hover to reveal hint';
-          hintsEl.appendChild(hintDiv);
-        });
-      }
+
+      // Preserve first card structure for the first exercise, dynamically append others
+      var sectionDivider = exerciseSection.querySelector('.section-divider');
+      var firstCard = exerciseSection.querySelector('.exercise-card');
+
+      // Clear section but keep divider
+      exerciseSection.innerHTML = '';
+      exerciseSection.appendChild(sectionDivider);
+
+      exList.forEach(function(ex, idx) {
+        var card = firstCard.cloneNode(true);
+
+        // Handle label "Exercise 1 of 3"
+        var existingLabel = card.querySelector('.exercise-count-label');
+        if (existingLabel) existingLabel.remove();
+
+        if (exList.length > 1) {
+          var label = document.createElement('div');
+          label.className = 'exercise-count-label';
+          label.style.fontWeight = 'bold';
+          label.style.marginBottom = '10px';
+          label.textContent = 'Exercise ' + (idx + 1) + ' of ' + exList.length;
+          card.insertBefore(label, card.firstChild);
+        }
+
+        var instEl = card.querySelector('.exercise-instruction');
+        if (idx === 0) instEl.id = 'exercise-instruction';
+        else instEl.removeAttribute('id');
+        instEl.textContent = ex.instruction;
+
+        var hintsEl = card.querySelector('.exercise-hints');
+        if (idx === 0) hintsEl.id = 'exercise-hints';
+        else hintsEl.removeAttribute('id');
+        hintsEl.innerHTML = '';
+        if (ex.hints && ex.hints.length > 0) {
+          ex.hints.forEach(function (hint) {
+            var hintDiv = document.createElement('div');
+            hintDiv.className = 'exercise-hint hidden-text';
+            hintDiv.innerHTML = '<span>' + escapeHtml(hint) + '</span>';
+            hintDiv.title = 'Hover to reveal hint';
+            hintsEl.appendChild(hintDiv);
+          });
+        }
+
+        var btn = card.querySelector('.btn-secondary');
+        if (idx === 0) {
+          btn.id = 'btn-load-exercise';
+          btn.textContent = exList.length > 1 ? 'Load Exercise 1 in Editor →' : 'Load Exercise in Editor →';
+        } else {
+          btn.id = 'btn-load-exercise-' + idx;
+          btn.textContent = 'Load Exercise ' + (idx + 1) + ' in Editor →';
+        }
+
+        exerciseSection.appendChild(card);
+      });
     } else {
       exerciseSection.style.display = 'none';
     }
@@ -1156,6 +1272,9 @@
     // Complete section
     document.getElementById('lesson-complete-section').style.display =
       isLessonCompleted(lessonId) ? 'block' : 'none';
+
+    // Update manual complete button
+    updateManualCompleteVisibility(lesson);
 
     // Clear output
     clearOutput();
@@ -1264,9 +1383,11 @@
           expectedOutputRaw = state.currentLesson.expectedOutput;
           hasExpectedOutput = true;
         }
-      } else if (runSource === 'exercise' && state.currentLesson.exercise) {
-        if (state.currentLesson.exercise.expectedOutput !== undefined && state.currentLesson.exercise.expectedOutput !== null) {
-          expectedOutputRaw = state.currentLesson.exercise.expectedOutput;
+      } else if (runSource === 'exercise') {
+        var exList = normalizeExerciseData(state.currentLesson);
+        var activeEx = exList[state.activeExerciseIndex];
+        if (activeEx && activeEx.expectedOutput !== undefined && activeEx.expectedOutput !== null) {
+          expectedOutputRaw = activeEx.expectedOutput;
           hasExpectedOutput = true;
         }
       }
@@ -1276,7 +1397,8 @@
       lessonId: currentLessonId,
       source: runSource,
       hasExpectedOutput: hasExpectedOutput,
-      expectedOutputRaw: expectedOutputRaw
+      expectedOutputRaw: expectedOutputRaw,
+      exerciseIndex: state.activeExerciseIndex
     };
 
     state.isCompiling = true;
@@ -1393,6 +1515,14 @@
         }
       } else {
         renderCheckerResult('CHECK_NOT_AVAILABLE');
+
+        // Phase C: If an open-ended exercise exits 0, mark openEndedRunCompleted = true
+        if (state.activeExecutionContext.source === 'exercise' && !state.activeExecutionContext.hasExpectedOutput) {
+          state.openEndedRunCompleted = true;
+          if (state.currentLesson) {
+            updateManualCompleteVisibility(state.currentLesson);
+          }
+        }
       }
       appendTerminalText(state.activeSessionId, '\n> Process exited with code ' + exitCode + '.\n', 'info');
     }
@@ -1610,14 +1740,20 @@
       verifyContent.innerHTML = '✅ <strong>Output matches expected result.</strong>';
 
       if (executionContext && executionContext.lessonId) {
-        completeLesson(executionContext.lessonId);
-
         if (executionContext.source === 'exercise') {
-          if (state.progress.completedExercises.indexOf(executionContext.lessonId) === -1) {
-            state.progress.completedExercises.push(executionContext.lessonId);
+          var exerciseId = executionContext.lessonId + ':' + executionContext.exerciseIndex;
+          if (state.progress.completedExercises.indexOf(exerciseId) === -1) {
+            state.progress.completedExercises.push(exerciseId);
             saveProgress();
             showToast('Exercise completed! 🎉', 'success');
           }
+          // Also complete the lesson if ALL checkable exercises have passed
+          if (isExerciseCompleted(executionContext.lessonId)) {
+            completeLesson(executionContext.lessonId);
+          }
+        } else {
+          // "Running the canonical codeExample successfully does NOT auto-complete the lesson." - Phase C
+          // So we do NOT completeLesson here for examples.
         }
       }
     } else if (status === 'FAIL') {
@@ -1970,9 +2106,10 @@
     grid.classList.add('stagger-children');
 
     var lessons = getAllLessons().filter(function (l) {
-      if (!l.exercise) return false;
-      if (difficulty === 'all') return true;
-      return l.difficulty === difficulty;
+      var exList = normalizeExerciseData(l);
+      if (exList.length === 0) return false;
+      if (difficulty !== 'all' && l.difficulty !== difficulty) return false;
+      return true;
     });
 
     if (lessons.length === 0) {
@@ -1986,13 +2123,18 @@
     }
 
     lessons.forEach(function (lesson) {
+      var exList = normalizeExerciseData(lesson);
       var card = document.createElement('div');
       card.className = 'practice-card glass-card';
+
       var isDone = isExerciseCompleted(lesson.id);
+
+      var badgeHtml = exList.length > 1 ? '<span class="practice-ex-count" style="font-size:0.7em; background:var(--bg-secondary); padding:2px 6px; border-radius:10px; margin-left:8px;">' + exList.length + ' exercises</span>' : '';
+
       card.innerHTML =
         '<div class="practice-card-chapter">Chapter ' + lesson.chapterId + '</div>' +
-        '<div class="practice-card-title">' + escapeHtml(lesson.title) + '</div>' +
-        '<div class="practice-card-instruction">' + escapeHtml(lesson.exercise.instruction) + '</div>' +
+        '<div class="practice-card-title">' + escapeHtml(lesson.title) + badgeHtml + '</div>' +
+        '<div class="practice-card-instruction">' + escapeHtml(exList[0].instruction) + '</div>' +
         '<div class="practice-card-footer">' +
           '<span class="practice-card-difficulty ' + (lesson.difficulty || 'beginner') + '">' + capitalize(lesson.difficulty || 'beginner') + '</span>' +
           '<span class="practice-card-status">' + (isDone ? '✅' : '⬜') + '</span>' +
@@ -2000,10 +2142,12 @@
 
       card.addEventListener('click', function () {
         openLesson(lesson.id);
-        // Auto-load the exercise
         setTimeout(function () {
-          setEditorCode(lesson.exercise.starterCode);
-          state.originalCode = lesson.exercise.starterCode;
+          setEditorCode(exList[0].starterCode);
+          state.originalCode = exList[0].starterCode;
+          state.editorMode = 'exercise';
+          state.activeExerciseIndex = 0;
+          state.openEndedRunCompleted = false;
         }, 200);
       });
 
@@ -2224,6 +2368,38 @@
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
+  }
+
+
+  function updateManualCompleteVisibility(lesson) {
+    if (!lesson) return;
+    var manualSection = document.getElementById('manual-completion-section');
+    if (!manualSection) return;
+
+    if (isLessonCompleted(lesson.id)) {
+      manualSection.style.display = 'none';
+      return;
+    }
+
+    var exList = normalizeExerciseData(lesson);
+    if (exList.length === 0) {
+      manualSection.style.display = 'none';
+      return;
+    }
+
+    // Check if ANY exercise is checkable (has expectedOutput)
+    var hasCheckable = exList.some(function(ex) {
+      return ex.expectedOutput !== undefined && ex.expectedOutput !== null;
+    });
+
+    if (hasCheckable) {
+      // If there's any checkable exercise, automatic completion applies, so manual is hidden
+      manualSection.style.display = 'none';
+    } else {
+      // All exercises are open-ended.
+      // Show ONLY if openEndedRunCompleted is true.
+      manualSection.style.display = state.openEndedRunCompleted ? 'block' : 'none';
+    }
   }
 
 })();
