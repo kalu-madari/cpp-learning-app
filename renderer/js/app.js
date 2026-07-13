@@ -132,6 +132,7 @@
     compilerAvailable: false,
     isCompiling: false,
     originalCode: '',
+    editorMode: 'example', // Tracks if the editor currently shows an example or exercise
 
     // Persisted state
     progress: {
@@ -623,6 +624,7 @@
       if (state.currentLesson && state.currentLesson.exercise) {
         setEditorCode(state.currentLesson.exercise.starterCode);
         state.originalCode = state.currentLesson.exercise.starterCode;
+        state.editorMode = 'exercise';
         showToast('Exercise loaded into editor', 'info');
       }
     });
@@ -974,6 +976,7 @@
       'Chapter ' + lesson.chapterId + ' · ' + lesson.chapterTitle + ' · Lesson ' + (getLessonIndex(lessonId) + 1);
 
     document.getElementById('lesson-body').innerHTML = lesson.content || '<p>No content available.</p>';
+    state.editorMode = 'example';
 
     // Load code example into editor
     if (lesson.codeExample) {
@@ -1113,6 +1116,33 @@
       return;
     }
 
+    // Capture explicit execution context before async IPC boundary
+    var currentLessonId = state.currentLesson ? state.currentLesson.id : null;
+    var runSource = state.editorMode || 'example';
+    var expectedOutputRaw = null;
+    var hasExpectedOutput = false;
+
+    if (state.currentLesson) {
+      if (runSource === 'example') {
+        if (state.currentLesson.expectedOutput !== undefined && state.currentLesson.expectedOutput !== null) {
+          expectedOutputRaw = state.currentLesson.expectedOutput;
+          hasExpectedOutput = true;
+        }
+      } else if (runSource === 'exercise' && state.currentLesson.exercise) {
+        if (state.currentLesson.exercise.expectedOutput !== undefined && state.currentLesson.exercise.expectedOutput !== null) {
+          expectedOutputRaw = state.currentLesson.exercise.expectedOutput;
+          hasExpectedOutput = true;
+        }
+      }
+    }
+
+    var executionContext = {
+      lessonId: currentLessonId,
+      source: runSource,
+      hasExpectedOutput: hasExpectedOutput,
+      expectedOutputRaw: expectedOutputRaw
+    };
+
     state.isCompiling = true;
     var runBtn = document.getElementById('btn-run-code');
     runBtn.classList.add('running');
@@ -1195,13 +1225,15 @@
           outputEl.innerHTML = successHtml;
 
           // Verify output against expected
-          if (state.currentLesson && state.currentLesson.expectedOutput !== undefined && state.currentLesson.expectedOutput !== null) {
-            var normalizedActual = (result.stdout || '').trim();
-            var normalizedExpected = (state.currentLesson.expectedOutput || '').trim();
+          if (executionContext.lessonId && executionContext.hasExpectedOutput) {
+            var actualRaw = result.stdout || '';
+            var normalizedActual = window.normalizeOutputForComparison ? window.normalizeOutputForComparison(actualRaw) : actualRaw.trim();
+            var normalizedExpected = window.normalizeOutputForComparison ? window.normalizeOutputForComparison(executionContext.expectedOutputRaw) : executionContext.expectedOutputRaw.trim();
+            
             if (normalizedActual === normalizedExpected) {
-              renderCheckerResult('PASS');
+              renderCheckerResult('PASS', actualRaw, executionContext.expectedOutputRaw, normalizedActual, normalizedExpected, executionContext);
             } else {
-              renderCheckerResult('FAIL', result.stdout || '', state.currentLesson.expectedOutput);
+              renderCheckerResult('FAIL', actualRaw, executionContext.expectedOutputRaw, normalizedActual, normalizedExpected, executionContext);
               setActiveExecutionTab('result');
             }
           } else {
@@ -1236,7 +1268,7 @@
     document.getElementById('verification-panel').style.display = (tabId === 'result') ? 'block' : 'none';
   }
 
-  function renderCheckerResult(status, actual, expected) {
+  function renderCheckerResult(status, actualRaw, expectedRaw, normalizedActual, normalizedExpected, executionContext) {
     var verifyContent = document.getElementById('verification-content');
     verifyContent.innerHTML = ''; // safe clear
     verifyContent.className = 'verification-content';
@@ -1253,12 +1285,12 @@
       verifyContent.className = 'verification-content pass';
       verifyContent.innerHTML = '✅ <strong>Output matches expected result.</strong>';
 
-      if (state.currentLesson) {
-        completeLesson(state.currentLesson.id);
-        var code = getEditorCode();
-        if (state.currentLesson.exercise && code !== state.currentLesson.codeExample) {
-          if (state.progress.completedExercises.indexOf(state.currentLesson.id) === -1) {
-            state.progress.completedExercises.push(state.currentLesson.id);
+      if (executionContext && executionContext.lessonId) {
+        completeLesson(executionContext.lessonId);
+        
+        if (executionContext.source === 'exercise') {
+          if (state.progress.completedExercises.indexOf(executionContext.lessonId) === -1) {
+            state.progress.completedExercises.push(executionContext.lessonId);
             saveProgress();
             showToast('Exercise completed! 🎉', 'success');
           }
@@ -1273,7 +1305,7 @@
 
       var expectedDiv = document.createElement('div');
       expectedDiv.className = 'expected-output';
-      expectedDiv.textContent = expected;
+      expectedDiv.textContent = expectedRaw;
       verifyContent.appendChild(expectedDiv);
 
       var yourOutputLabel = document.createElement('div');
@@ -1282,8 +1314,18 @@
 
       var actualDiv = document.createElement('div');
       actualDiv.className = 'actual-output';
-      actualDiv.textContent = actual;
+      actualDiv.textContent = actualRaw;
       verifyContent.appendChild(actualDiv);
+
+      var diffMsg = window.findFirstDifference ? window.findFirstDifference(normalizedActual, normalizedExpected) : null;
+      if (diffMsg) {
+        var diffLabel = document.createElement('p');
+        diffLabel.style.marginTop = '8px';
+        diffLabel.style.fontWeight = 'bold';
+        diffLabel.style.color = 'var(--color-warning)';
+        diffLabel.textContent = diffMsg;
+        verifyContent.appendChild(diffLabel);
+      }
 
       var footer = document.createElement('p');
       footer.style.marginTop = '8px';
