@@ -604,6 +604,12 @@
         sendInput();
       }
     });
+    document.getElementById('terminal-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendTerminalInput();
+      }
+    });
 
     // Output tabs
     document.querySelectorAll('.output-tab').forEach(function (tab) {
@@ -839,12 +845,14 @@
       if (data.sessionId !== state.activeSessionId) return;
       state.stdoutAccumulator += data.data;
       appendOutput(escapeHtml(data.data));
+      appendTerminalText(data.sessionId, data.data, 'stdout');
     });
 
     window.api.onExecutionStderr(function(data) {
       if (data.sessionId !== state.activeSessionId) return;
       state.stderrAccumulator += data.data;
       appendOutput('<span style="color:var(--color-error);">' + escapeHtml(data.data) + '</span>');
+      appendTerminalText(data.sessionId, data.data, 'stderr');
     });
 
     window.api.onExecutionExit(function(data) {
@@ -870,6 +878,7 @@
     window.api.onStdinClosed(function(data) {
       if (data.sessionId !== state.activeSessionId) return;
       state.stdinOpen = false;
+      appendTerminalText(data.sessionId, '\n> STDIN closed.\n', 'info');
       updateInputControls();
     });
   }
@@ -1289,7 +1298,9 @@
     outputEl.innerHTML = '<span style="color:var(--text-tertiary);">⏳ Compiling and running...</span>';
 
     // Switch to output tab first to show compilation progress, but user can switch to input if they want
-    setActiveExecutionTab('output');
+    resetTerminal();
+    setActiveExecutionTab('terminal');
+    appendTerminalText(state.activeSessionId, '> Compiling...\n', 'info');
     renderCheckerResult('NOT_RUN_YET');
     updateInputControls();
 
@@ -1318,6 +1329,7 @@
               '</div>';
           }
           document.getElementById('output-content').innerHTML = errorHtml;
+          appendTerminalText(state.activeSessionId, '> Compilation failed.\n\n' + result.compilerOutput + '\n', 'error');
           renderCheckerResult('COMPILATION_FAILED');
         } else {
           // This covers spawn failure, IPC failure, or unexpected errors
@@ -1333,6 +1345,7 @@
         var statusEl = document.getElementById('output-status');
         statusEl.textContent = 'Running...';
         statusEl.className = 'output-status running';
+        appendTerminalText(state.activeSessionId, '> Compilation successful.\n> Starting program...\n\n', 'info');
         updateInputControls();
 
         state.progress.runsCount++;
@@ -1360,6 +1373,7 @@
       statusEl.textContent = 'Runtime Error (exit ' + exitCode + ')';
       statusEl.className = 'output-status error';
       appendOutput('\n<span style="color:var(--color-error);font-weight:600;">⚠️ Runtime Error (exit code: ' + exitCode + ')</span>\n');
+      appendTerminalText(state.activeSessionId, '\n> Process exited with code ' + exitCode + '.\n', 'error');
       renderCheckerResult('RUNTIME_FAILED');
     } else {
       statusEl.textContent = 'Success';
@@ -1380,6 +1394,7 @@
       } else {
         renderCheckerResult('CHECK_NOT_AVAILABLE');
       }
+      appendTerminalText(state.activeSessionId, '\n> Process exited with code ' + exitCode + '.\n', 'info');
     }
     resetExecutionUI();
   }
@@ -1392,6 +1407,7 @@
     statusEl.textContent = 'Timed Out';
     statusEl.className = 'output-status error';
     appendOutput('\n<span style="color:var(--color-warning);font-weight:600;">⏰ Execution timed out</span>\n<span style="color:var(--text-secondary);">Your program took too long to execute. Check for infinite loops or waiting for input indefinitely.</span>\n');
+    appendTerminalText(state.activeSessionId, '\n> Execution timed out.\n', 'error');
     renderCheckerResult('RUNTIME_FAILED');
     resetExecutionUI();
   }
@@ -1404,6 +1420,7 @@
     statusEl.textContent = 'Error';
     statusEl.className = 'output-status error';
     appendOutput('\n<span style="color:var(--color-error);">' + escapeHtml(errorStr || 'Unknown error') + '</span>\n');
+    appendTerminalText(state.activeSessionId, '\n> Error: ' + (errorStr || 'Unknown error') + '\n', 'error');
     renderCheckerResult('RUNTIME_FAILED');
   }
 
@@ -1415,6 +1432,7 @@
     statusEl.textContent = 'Stopped';
     statusEl.className = 'output-status error';
     appendOutput('\n<span style="color:var(--color-warning);">🛑 Execution stopped by user.</span>\n');
+    appendTerminalText(state.activeSessionId, '\n> Execution stopped by user.\n', 'info');
     renderCheckerResult('RUNTIME_FAILED');
     resetExecutionUI();
   }
@@ -1453,6 +1471,7 @@
       historyEl.appendChild(item);
       historyEl.scrollTop = historyEl.scrollHeight;
 
+      appendTerminalText(state.activeSessionId, text, 'input');
       textarea.value = '';
     } else {
       console.error('Failed to send input:', res?.error);
@@ -1491,6 +1510,69 @@
         statusText.className = 'input-status-indicator';
       }
     }
+    setTerminalInputEnabled(canInput);
+  }
+
+  // =========================================================================
+  // Terminal Tab Helpers
+  // =========================================================================
+
+  function resetTerminal() {
+    var transcript = document.getElementById('terminal-transcript');
+    transcript.innerHTML = '';
+    setTerminalInputEnabled(false);
+  }
+
+  function appendTerminalText(sessionId, text, type) {
+    if (sessionId !== state.activeSessionId) return;
+    var transcript = document.getElementById('terminal-transcript');
+    var span = document.createElement('span');
+    span.textContent = text;
+    if (type === 'error' || type === 'stderr') {
+      span.style.color = 'var(--color-error)';
+    } else if (type === 'success') {
+      span.style.color = 'var(--color-success)';
+    } else if (type === 'info') {
+      span.style.color = 'var(--text-tertiary)';
+    } else if (type === 'input') {
+      span.style.color = 'var(--color-primary)';
+    }
+    transcript.appendChild(span);
+    transcript.scrollTop = transcript.scrollHeight;
+  }
+
+  function setTerminalInputEnabled(enabled) {
+    var input = document.getElementById('terminal-input');
+    if (!input) return;
+    input.disabled = !enabled;
+    if (enabled) {
+      input.focus();
+    }
+  }
+
+  async function sendTerminalInput() {
+    if (!state.isCompiling || !state.stdinOpen || !state.activeSessionId) return;
+    var input = document.getElementById('terminal-input');
+    var text = input.value;
+    if (!text) return;
+    text += '\n';
+    var res = await window.api.sendStdin({ sessionId: state.activeSessionId, input: text });
+    if (res && res.success) {
+      appendTerminalText(state.activeSessionId, text, 'input');
+      // Also update input history for interoperability
+      var historyEl = document.getElementById('input-history');
+      if (historyEl && historyEl.querySelector('.output-placeholder')) {
+        historyEl.innerHTML = '';
+      }
+      var item = document.createElement('div');
+      item.className = 'input-history-item sent';
+      item.textContent = '> ' + text;
+      if (historyEl) {
+        historyEl.appendChild(item);
+        historyEl.scrollTop = historyEl.scrollHeight;
+      }
+      input.value = '';
+    }
   }
 
   // =========================================================================
@@ -1507,6 +1589,7 @@
     document.getElementById('output-content').style.display = (tabId === 'output') ? 'block' : 'none';
     document.getElementById('verification-panel').style.display = (tabId === 'result') ? 'block' : 'none';
     document.getElementById('input-panel').style.display = (tabId === 'input') ? 'flex' : 'none';
+    document.getElementById('terminal-panel').style.display = (tabId === 'terminal') ? 'flex' : 'none';
   }
 
   function renderCheckerResult(status, actualRaw, expectedRaw, normalizedActual, normalizedExpected, executionContext) {
@@ -1680,7 +1763,10 @@
     document.getElementById('output-status').textContent = '';
     document.getElementById('output-status').className = 'output-status';
     renderCheckerResult('NOT_RUN_YET');
-    setActiveExecutionTab('output');
+
+    // Clear terminal without switching tab or breaking input controls
+    resetTerminal();
+    updateInputControls();
   }
 
   // =========================================================================

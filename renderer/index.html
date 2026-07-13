@@ -317,6 +317,7 @@
                   <button class="output-tab" data-tab="input">Input</button>
                   <button class="output-tab active" data-tab="output">Output</button>
                   <button class="output-tab" data-tab="result">Result</button>
+                  <button class="output-tab" data-tab="terminal">Terminal</button>
                 </div>
                 <div class="output-toolbar-right">
                   <span class="output-status" id="output-status"></span>
@@ -361,6 +362,15 @@
                   <div class="output-placeholder">
                     <span>Run the code to see the result.</span>
                   </div>
+                </div>
+              </div>
+
+              <!-- Terminal Panel -->
+              <div class="terminal-panel" id="terminal-panel" style="display:none;">
+                <div class="terminal-transcript" id="terminal-transcript"></div>
+                <div class="terminal-input-row">
+                  <span class="terminal-prompt">&gt;</span>
+                  <textarea id="terminal-input" class="terminal-input" autocomplete="off" disabled placeholder="Type input and press Enter (Shift+Enter for newline)..." rows="1"></textarea>
                 </div>
               </div>
             </div>
