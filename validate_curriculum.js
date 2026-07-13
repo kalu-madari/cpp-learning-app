@@ -6,26 +6,31 @@ const checker = require('./renderer/js/checker.js');
 // Mock window to load browser scripts
 global.window = {};
 
-const LESSON_DATA_DIR = path.join(__dirname, 'renderer', 'lesson-data');
+const chaptersDir = path.join(__dirname, 'renderer', 'lesson-data', 'chapters');
+let chapterFiles = [];
 
-// Load chapters
-const chapterFiles = [
-  'basic/c01-getting-started-with-c.js',
-  'basic/c02-variables-and-data-types.js',
-  'basic/c03-operators-and-expressions.js',
-  'basic/c04-control-flow.js',
-  'intermediate/c05-loops.js',
-  'intermediate/c06-functions.js',
-  'intermediate/c07-arrays-and-strings.js',
-  'expert/c08-pointers-and-references.js',
-  'intermediate/c09-structures-and-enums.js',
-  'expert/c10-object-oriented-programming.js',
-  'expert/c11-templates-and-stl.js',
-  'expert/c12-file-handling.js',
-  'expert/c13-exception-handling.js',
-  'master/c14-smart-pointers-and-memory.js',
-  'master/c15-advanced-topics.js'
-];
+// Legacy support during transition
+const legacyDirs = ['basic', 'intermediate', 'expert', 'master'].map(t =>
+  path.join(__dirname, 'renderer', 'lesson-data', t)
+);
+if (!process.env.VALIDATE_NEW_ONLY) {
+  legacyDirs.forEach(dir => {
+    if (fs.existsSync(dir)) {
+      fs.readdirSync(dir).filter(f => f.endsWith('.js') && !f.includes('index'))
+        .forEach(f => chapterFiles.push({ path: path.join(dir, f), isLegacy: true }));
+    }
+  });
+}
+
+// New chapters/
+if (process.env.VALIDATE_NEW_ONLY && fs.existsSync(chaptersDir)) {
+  fs.readdirSync(chaptersDir).filter(f => f.endsWith('.js'))
+    .sort()
+    .forEach(f => chapterFiles.push({ path: path.join(chaptersDir, f), isLegacy: false }));
+}
+
+let globalChapterIds = new Set();
+let globalLessonIds = new Set();
 
 let totalChaptersScanned = 0;
 let totalLessonsScanned = 0;
@@ -38,9 +43,20 @@ let floatingPointIssues = [];
 const tempDir = path.join(__dirname, 'temp_build');
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
+function addFailure(chapterId, lessonId, title, errorMsg) {
+  failures.push({
+    chapterId: chapterId || 'N/A',
+    lessonId: lessonId || 'N/A',
+    title: title || 'N/A',
+    error: 'SCHEMA_ERROR',
+    details: errorMsg
+  });
+}
+
 // Static Audit & Execution
-chapterFiles.forEach(file => {
-  const fullPath = path.join(LESSON_DATA_DIR, file);
+chapterFiles.forEach(fileObj => {
+  const fullPath = fileObj.path;
+  const isLegacy = fileObj.isLegacy;
   if (!fs.existsSync(fullPath)) return;
 
   // Clean window.CPP_CHAPTERS for isolation
@@ -51,23 +67,144 @@ chapterFiles.forEach(file => {
   eval(code);
 
   const chapters = window.CPP_CHAPTERS;
-  if (!chapters || chapters.length === 0) return;
+  if (!chapters || !Array.isArray(chapters) || chapters.length === 0) return;
 
   chapters.forEach(chapter => {
     totalChaptersScanned++;
+
+    // Chapter Schema validation
+    if (!chapter.title || typeof chapter.title !== 'string' || !chapter.title.trim()) {
+      addFailure(chapter.id, null, null, `Invalid or empty chapter.title in ${fullPath}`);
+    }
+    if (!isLegacy) {
+      if (!chapter.icon || typeof chapter.icon !== 'string' || !chapter.icon.trim()) {
+        addFailure(chapter.id, null, null, `Invalid or empty chapter.icon in ${fullPath}`);
+      }
+    }
+
+    if (typeof chapter.id !== 'number' || chapter.id <= 0 || !Number.isInteger(chapter.id)) {
+      addFailure(chapter.id, null, chapter.title, `Invalid chapter.id in file ${fullPath}`);
+    } else {
+      if (globalChapterIds.has(chapter.id)) {
+        addFailure(chapter.id, null, chapter.title, `Duplicate chapter.id ${chapter.id} in file ${fullPath}`);
+      }
+      globalChapterIds.add(chapter.id);
+    }
+
+    if (!chapter.lessons || !Array.isArray(chapter.lessons)) {
+       addFailure(chapter.id, null, chapter.title, `chapter.lessons must be an array`);
+       return;
+    }
+
     chapter.lessons.forEach(lesson => {
       totalLessonsScanned++;
 
-      // Static assertions
-      if (!lesson.id) console.error(`Missing lesson id in Chapter ${chapter.id}`);
-      if (typeof lesson.expectedOutput !== 'string' && lesson.expectedOutput !== null && lesson.expectedOutput !== undefined) {
-        console.error(`Invalid expectedOutput type in ${lesson.id}`);
+      // Lesson ID
+      if (!lesson.id) {
+        addFailure(chapter.id, null, lesson.title, `Missing lesson id`);
+      } else {
+        if (!/^ch\d+-l\d+$/.test(lesson.id)) {
+          addFailure(chapter.id, lesson.id, lesson.title, `Invalid lesson.id format ${lesson.id}`);
+        }
+        if (globalLessonIds.has(lesson.id)) {
+          addFailure(chapter.id, lesson.id, lesson.title, `Duplicate lesson.id ${lesson.id}`);
+        }
+        globalLessonIds.add(lesson.id);
       }
-      if (lesson.exercise) {
-        if (typeof lesson.exercise.expectedOutput !== 'string' && lesson.exercise.expectedOutput !== null && lesson.exercise.expectedOutput !== undefined) {
-          console.error(`Invalid exercise.expectedOutput type in ${lesson.id}`);
+
+      // Required lesson fields
+      if (!lesson.title || typeof lesson.title !== 'string' || !lesson.title.trim()) {
+        addFailure(chapter.id, lesson.id, lesson.title, `Invalid or empty lesson.title`);
+      }
+      if (!lesson.difficulty || typeof lesson.difficulty !== 'string') {
+        addFailure(chapter.id, lesson.id, lesson.title, `Invalid lesson.difficulty`);
+      }
+      if (!lesson.content || typeof lesson.content !== 'string' || !lesson.content.trim()) {
+        addFailure(chapter.id, lesson.id, lesson.title, `Invalid or empty lesson.content`);
+      }
+      if (!lesson.codeExample || typeof lesson.codeExample !== 'string' || !lesson.codeExample.trim()) {
+        addFailure(chapter.id, lesson.id, lesson.title, `Invalid or empty lesson.codeExample`);
+      }
+
+      if (typeof lesson.expectedOutput !== 'string' && lesson.expectedOutput !== null && lesson.expectedOutput !== undefined) {
+        addFailure(chapter.id, lesson.id, lesson.title, `Invalid expectedOutput type`);
+      }
+
+      if (typeof lesson.stdinFixture !== 'string' && lesson.stdinFixture !== null && lesson.stdinFixture !== undefined) {
+        addFailure(chapter.id, lesson.id, lesson.title, `Invalid stdinFixture type`);
+      }
+
+      // Quiz check
+      if (lesson.quiz === null) {
+        // valid
+      } else if (Array.isArray(lesson.quiz)) {
+        lesson.quiz.forEach((q, qIdx) => {
+          if (!q.question || typeof q.question !== 'string' || (!isLegacy && !q.question.trim())) {
+             addFailure(chapter.id, lesson.id, lesson.title, `Missing, invalid, or empty quiz question at qIdx ${qIdx}`);
+          }
+          if (!q.options || !Array.isArray(q.options) || q.options.length < 2) {
+             addFailure(chapter.id, lesson.id, lesson.title, `Quiz options must be an Array with length >= 2 in qIdx ${qIdx}`);
+          }
+          const optLen = Array.isArray(q.options) ? q.options.length : 0;
+          if (!Number.isInteger(q.correctIndex) || q.correctIndex < 0 || q.correctIndex >= optLen) {
+             addFailure(chapter.id, lesson.id, lesson.title, `Invalid correctIndex in qIdx ${qIdx}`);
+          }
+          if (!q.explanation || typeof q.explanation !== 'string' || (!isLegacy && !q.explanation.trim())) {
+             addFailure(chapter.id, lesson.id, lesson.title, `Missing, invalid, or empty quiz explanation at qIdx ${qIdx}`);
+          }
+        });
+      } else {
+        if (!isLegacy) {
+          addFailure(chapter.id, lesson.id, lesson.title, `lesson.quiz must be Array or null`);
         }
       }
+
+      // Exact legacy normalization semantics during transition
+      let exerciseList = [];
+      if (lesson.exercises === null) {
+        exerciseList = [];
+      } else if (Array.isArray(lesson.exercises)) {
+        exerciseList = lesson.exercises;
+      } else if (lesson.exercises !== undefined) {
+        addFailure(chapter.id, lesson.id, lesson.title, `exercises must be Array or null`);
+      } else if (lesson.exercise !== undefined) {
+        if (!isLegacy) {
+          addFailure(chapter.id, lesson.id, lesson.title, `Legacy singular exercise found in strict v2 file`);
+        } else {
+          exerciseList = [lesson.exercise];
+        }
+      } else {
+        if (!isLegacy) {
+          addFailure(chapter.id, lesson.id, lesson.title, `Missing exercises array (must be Array or null)`);
+        }
+        exerciseList = [];
+      }
+
+      if (!isLegacy && exerciseList.length > 3) {
+        addFailure(chapter.id, lesson.id, lesson.title, `exercises array exceeds maximum of 3`);
+      }
+
+      const validExerciseTypes = ["modify", "debug", "complete", "write", "predict", "review"];
+
+      exerciseList.forEach((ex, exIdx) => {
+        if (!ex.instruction || typeof ex.instruction !== 'string' || (!isLegacy && !ex.instruction.trim())) {
+           addFailure(chapter.id, lesson.id, lesson.title, `Missing, invalid, or empty exercises[${exIdx}].instruction`);
+        }
+        if (!ex.starterCode || typeof ex.starterCode !== 'string' || !ex.starterCode.trim()) {
+           addFailure(chapter.id, lesson.id, lesson.title, `Missing or empty exercises[${exIdx}].starterCode`);
+        }
+        if (typeof ex.expectedOutput !== 'string' && ex.expectedOutput !== null && ex.expectedOutput !== undefined) {
+          addFailure(chapter.id, lesson.id, lesson.title, `Invalid exercises[${exIdx}].expectedOutput type`);
+        }
+        if (typeof ex.stdinFixture !== 'string' && ex.stdinFixture !== null && ex.stdinFixture !== undefined) {
+          addFailure(chapter.id, lesson.id, lesson.title, `Invalid exercises[${exIdx}].stdinFixture type`);
+        }
+        if (!isLegacy) {
+          if (!ex.exerciseType || !validExerciseTypes.includes(ex.exerciseType)) {
+            addFailure(chapter.id, lesson.id, lesson.title, `Invalid or missing exercises[${exIdx}].exerciseType`);
+          }
+        }
+      });
 
       // Execute code if expectedOutput is deterministic
       if (lesson.expectedOutput !== null && lesson.expectedOutput !== undefined) {
@@ -146,6 +283,19 @@ chapterFiles.forEach(file => {
     });
   });
 });
+
+let sortedChapters = Array.from(globalChapterIds).sort((a,b)=>a-b);
+for (let i = 0; i < sortedChapters.length; i++) {
+  if (sortedChapters[i] !== i + 1) {
+    failures.push({
+      chapterId: sortedChapters[i],
+      lessonId: 'N/A',
+      title: 'N/A',
+      error: 'SCHEMA_ERROR',
+      details: `Chapter IDs are not strictly sequential starting from 1 (found ${sortedChapters[i]} at index ${i})`
+    });
+  }
+}
 
 console.log("==========================================");
 console.log("FINAL REPORT");
