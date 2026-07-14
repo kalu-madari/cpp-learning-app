@@ -374,7 +374,7 @@ var normalizedExpected = (expected || '').trim();
 
 - **Lessons per chapter:** 2–7 (3-5 recommended).
 - **Content size per lesson:** 150–500 words of prose.
-- **Maximum chapter file size:** ~20,000 bytes. (Warning at 15,000 bytes).
+- **Warning threshold for chapter file size:** ~35,000 bytes (35840 bytes). Exceeding this triggers review for duplication, filler, scope creep, and unnecessary verbosity, but is not a validation failure and must not force pedagogical compression.
 - **One-chapter-per-session:** AI generation must happen one chapter at a time to prevent quota exhaustion.
 - **Splitting:** If a chapter grows too large, split it logically (e.g., "Functions Part 1", "Functions Part 2").
 

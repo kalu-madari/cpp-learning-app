@@ -71,8 +71,7 @@
     2,
     3
   ],
-  "recommendedMaximumChapterFileSizeBytes": 20480,
-  "chapterFileWarningSizeBytes": 15360,
+  "chapterFileWarningSizeBytes": 35840,
   "oneChapterPerGenerationSession": true,
   "reservedChapterIds": [
     1,
