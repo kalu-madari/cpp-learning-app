@@ -39,6 +39,20 @@ class MockDOMElement {
     this.dataset = {};
     this.listeners = {};
     this.value = '';
+    this.parentMock = null;
+  }
+  closest(selector) {
+    if (selector.startsWith('[id^=')) {
+      const match = selector.match(/\[id\^=["'](.*)["']\]/);
+      const prefix = match ? match[1] : null;
+      if (prefix && this.id && this.id.startsWith(prefix)) return this;
+      let curr = this.parentMock;
+      while (curr) {
+        if (curr.id && curr.id.startsWith(prefix)) return curr;
+        curr = curr.parentMock;
+      }
+    }
+    return null;
   }
   focus() {}
   insertAdjacentHTML() {}
@@ -56,8 +70,14 @@ class MockDOMElement {
       this.listeners[eventObj.type].forEach(h => h(eventObj));
     }
   }
-  appendChild(child) { this.children.push(child); }
-  insertBefore(newChild, refChild) { this.children.push(newChild); }
+  appendChild(child) {
+    child.parentMock = this;
+    this.children.push(child);
+  }
+  insertBefore(newChild, refChild) {
+    newChild.parentMock = this;
+    this.children.push(newChild);
+  }
   querySelector() { return new MockDOMElement('qs'); }
   querySelectorAll() { return []; }
   cloneNode() { return new MockDOMElement(this.id, this.tagName); }
@@ -201,6 +221,81 @@ test('Loading Exercise N sets activeExerciseIndex = N', async () => {
 
   document.dispatchEvent({ type: 'click', target: { id: 'btn-load-exercise-2' } });
   assert.strictEqual(app.state.activeExerciseIndex, 2);
+});
+
+test('Regression: Loading Exercise N from actual dynamically rendered DOM button', async () => {
+  const { app, document } = createMockApp();
+  await app.init();
+
+  app.state.currentLesson = { id: 'ch1-l1', exercises: [{ starterCode: 'CODE0' }, { starterCode: 'CODE1' }, { starterCode: 'CODE2' }] };
+
+  // Helper to ensure editor gets loaded
+  const checkEditor = (expectedIndex, expectedCode) => {
+    assert.strictEqual(app.state.activeExerciseIndex, expectedIndex);
+    assert.strictEqual(app.state.editor.getValue(), expectedCode);
+    assert.strictEqual(app.state.originalCode, expectedCode);
+  };
+
+  // 1. Test Exercise 0 (id="btn-load-exercise")
+  document.dispatchEvent({ type: 'click', target: { id: 'btn-load-exercise' } });
+  checkEditor(0, 'CODE0');
+
+  // Establish a different current editor value
+  app.state.editor.setValue('DIFFERENT');
+
+  // 2. Test Exercise 1 (id="btn-load-exercise-1")
+  document.dispatchEvent({ type: 'click', target: { id: 'btn-load-exercise-1' } });
+  checkEditor(1, 'CODE1');
+
+  // 3. Test Exercise 2 (id="btn-load-exercise-2")
+  document.dispatchEvent({ type: 'click', target: { id: 'btn-load-exercise-2' } });
+  checkEditor(2, 'CODE2');
+
+  // Verify another exercise's starterCode is not loaded
+  assert.notStrictEqual(app.state.editor.getValue(), 'CODE0');
+
+  // 4. Repeated switching
+  document.dispatchEvent({ type: 'click', target: { id: 'btn-load-exercise-0' } });
+  checkEditor(0, 'CODE0');
+
+  // 5. Malformed IDs
+  app.state.editor.setValue('KEEP_THIS');
+  const malformedIDs = ['btn-load-exercise-x', 'btn-load-exercise-', 'btn-load-exercise-1x', 'btn-load-exercise--1'];
+  for (const badId of malformedIDs) {
+    document.dispatchEvent({ type: 'click', target: { id: badId } });
+    assert.strictEqual(app.state.activeExerciseIndex, 0); // Unchanged
+    assert.strictEqual(app.state.editor.getValue(), 'KEEP_THIS'); // Unchanged
+  }
+
+  // 6. Out-of-range IDs
+  document.dispatchEvent({ type: 'click', target: { id: 'btn-load-exercise-99' } });
+  assert.strictEqual(app.state.activeExerciseIndex, 0); // Unchanged
+  assert.strictEqual(app.state.editor.getValue(), 'KEEP_THIS'); // Unchanged
+
+  // 7. Missing currentLesson is handled safely
+  app.state.currentLesson = null;
+  document.dispatchEvent({ type: 'click', target: { id: 'btn-load-exercise-1' } });
+  assert.strictEqual(app.state.activeExerciseIndex, 0); // Unchanged
+  assert.strictEqual(app.state.editor.getValue(), 'KEEP_THIS'); // Unchanged
+
+  // Restore currentLesson for next tests
+  app.state.currentLesson = { id: 'ch1-l1', exercises: [{ starterCode: 'CODE0' }] };
+
+  // 8. Legacy exercise Object still works
+  app.state.currentLesson = { id: 'legacy', exercise: { starterCode: 'LEGACY_CODE' } };
+  document.dispatchEvent({ type: 'click', target: { id: 'btn-load-exercise' } });
+  checkEditor(0, 'LEGACY_CODE');
+
+  // 9. Nested child click handling
+  app.state.editor.setValue('DIFFERENT');
+  const btn = { id: 'btn-load-exercise' };
+  const nestedSpan = { id: 'span-inside-button', parentMock: btn };
+  btn.closest = MockDOMElement.prototype.closest; // Attach closest() logic manually for this generic object
+  nestedSpan.closest = function(selector) {
+    return MockDOMElement.prototype.closest.call(this, selector);
+  };
+  document.dispatchEvent({ type: 'click', target: nestedSpan });
+  checkEditor(0, 'LEGACY_CODE');
 });
 
 test('Running Exercise N uses Exercise N expectedOutput', async () => {

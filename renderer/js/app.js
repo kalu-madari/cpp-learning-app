@@ -688,34 +688,31 @@
     });
 
     // Load exercise
-    document.getElementById('btn-load-exercise').addEventListener('click', function () {
+    // We bind dynamically because the exercise section is re-rendered when lessons open
+    document.addEventListener('click', function(e) {
+      if (!e.target) return;
+
+      // Resolve the actual button even if a nested child was clicked
+      var btn = typeof e.target.closest === 'function' ? e.target.closest('[id^="btn-load-exercise"]') : e.target;
+      if (!btn || !btn.id) return;
+
+      // Strict regex matching for EXACTLY "btn-load-exercise" or "btn-load-exercise-N"
+      var match = btn.id.match(/^btn-load-exercise(?:-(\d+))?$/);
+      if (!match) return;
+
+      // If there's no capture group, it's the base ID (index 0). Otherwise, parse the digits.
+      var idx = match[1] ? parseInt(match[1], 10) : 0;
+
       if (state.currentLesson) {
         var exList = normalizeExerciseData(state.currentLesson);
-        if (exList.length > 0) {
-          state.activeExerciseIndex = 0;
+        // Strict bounds checking
+        if (idx >= 0 && idx < exList.length) {
+          state.activeExerciseIndex = idx;
           state.openEndedRunCompleted = false;
-          setEditorCode(exList[0].starterCode);
-          state.originalCode = exList[0].starterCode;
+          setEditorCode(exList[idx].starterCode);
+          state.originalCode = exList[idx].starterCode;
           state.editorMode = 'exercise';
-          showToast('Exercise loaded into editor', 'info');
-        }
-      }
-    });
-
-    // We also need to bind dynamic buttons. We can just use event delegation on the document for any button with id starting with btn-load-exercise-
-    document.addEventListener('click', function(e) {
-      if (e.target && e.target.id && e.target.id.startsWith('btn-load-exercise-')) {
-        var idx = parseInt(e.target.id.replace('btn-load-exercise-', ''));
-        if (state.currentLesson && !isNaN(idx)) {
-          var exList = normalizeExerciseData(state.currentLesson);
-          if (exList.length > idx) {
-            state.activeExerciseIndex = idx;
-            state.openEndedRunCompleted = false;
-            setEditorCode(exList[idx].starterCode);
-            state.originalCode = exList[idx].starterCode;
-            state.editorMode = 'exercise';
-            showToast('Exercise ' + (idx + 1) + ' loaded into editor', 'info');
-          }
+          showToast('Exercise ' + (exList.length > 1 ? (idx + 1) + ' ' : '') + 'loaded into editor', 'info');
         }
       }
     });
