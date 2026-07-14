@@ -65,3 +65,9 @@ test('Checker first-difference extra line', () => {
   const diff = checker.findFirstDifference(actual, expected);
   assert.strictEqual(diff, 'First difference at line 2 (Actual output has extra line).');
 });
+
+test('Trailing-whitespace-per-line normalization behavior required by the architecture', () => {
+  const actual = 'Line 1  \nLine 2 \t\nLine 3';
+  const expected = 'Line 1\nLine 2\nLine 3';
+  assert.strictEqual(checker.normalizeOutputForComparison(actual), checker.normalizeOutputForComparison(expected));
+});
