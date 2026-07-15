@@ -1,9 +1,9 @@
 # FINAL_CURRICULUM_ARCHITECTURE.md
 # C++ Mastery — Final Implementation-Ready Curriculum Architecture
 
-**Status:** IMPLEMENTATION READY
-**Baseline commit:** `5b58798 Add project handoff documentation`
-**Precedes:** Schema v2 commits A–G
+**Status:** IMPLEMENTATION IN PROGRESS (Phase E2)
+**Baseline commit:** The active implementation baseline is now after Chapter 6.
+**Precedes:** Schema v2 commits E2–G
 **Authority:** This document supersedes `CURRICULUM_ARCHITECTURE.md` and `CURRICULUM_ARCHITECTURE_REVIEW.md`.
 **Do not modify** without re-running `npm run verify` and updating HANDOFF.md.
 
@@ -95,7 +95,7 @@ Every finding from `CURRICULUM_ARCHITECTURE_REVIEW.md` is addressed below before
 **Reviews are the final lesson inside each chapter — no separate review chapters.**
 Lesson count ranges are targets; validator enforces minimum of 2.
 
-### STAGE 1: FOUNDATIONS (Chapters 1–6)
+### STAGE 1: FOUNDATIONS (Chapters 1–6) — COMPLETE
 
 | ID | Title | Lessons | Key Concepts |
 |---|---|---|---|
@@ -893,28 +893,33 @@ All 20 tests in `tests/checker.test.js` + `tests/execution-session.test.js` must
 
 ## PART 17: P0 IMPLEMENTATION PLAN (Phases)
 
-### Phase A — "chore(spec): Rewrite specification to schema v2"
+### Phase A — "chore(spec): Rewrite specification to schema v2" (COMPLETE)
 **Risk:** Low (documentation and validator configuration)
 Files: `CHAPTER_SPEC.md`, `curriculum-rules.json`
 Verification: `npm run verify` must pass unchanged.
 
-### Phase B — "feat(schema-v2): Validator infrastructure + transition compatibility"
+### Phase B — "feat(schema-v2): Validator infrastructure + transition compatibility" (COMPLETE)
 **Risk:** Low (validator only)
 Files: `validate_curriculum.js` — staging/legacy validator modes; normalize legacy singular exercise.
 Verification: `npm run validate` passes (legacy mode); `npm run validate:new` checks staging.
 
-### Phase C — "feat(schema-v2): Renderer Schema v2 support + compatibility + progress semantics"
+### Phase C — "feat(schema-v2): Renderer Schema v2 support + compatibility + progress semantics" (COMPLETE)
 **Risk:** Medium (runtime)
 Files: `renderer/css/styles.css`, `renderer/js/app.js` — use `normalizeExerciseData(lesson)` for legacy compat; decoupled lesson/exercise completion logic; `"lessonId:N"` format.
 Verification: `node verify_dom_bindings.js` passes; Manual smoke test of completion paths.
 
-### Phase D — "test: Add schema v2 regression tests"
+### Phase D — "test: Add schema v2 regression tests" (COMPLETE)
 **Risk:** Low (validator execution behavior + tests)
 Files: `validate_curriculum.js` (implement `stdinFixture` piping), `tests/checker.test.js`, `tests/execution-session.test.js`, `tests/renderer-helpers.test.js` (new file for pure helpers).
 Requirement: Must explicitly implement the full regression contract defined in §16.2 (37 tests total covering validator logic, normalization, routing, canonical isolation, open-ended completion, and practice mode).
 Verification: `npm test` passes.
 
-### Phase E1–E7 — "chore(curriculum): Generate and validate Stage X chapters"
+### Phase E1 — "chore(curriculum): Generate and validate Stage 1 chapters" (COMPLETE)
+**Risk:** Medium (data generation)
+Files: `renderer/lesson-data/chapters/c01*.js` to `c06*.js` generated (Chapters 1–6).
+Verification: `npm run validate:new` passes independently of legacy curriculum.
+
+### Phase E2–E7 — "chore(curriculum): Generate and validate Stage 2-7 chapters"
 **Risk:** Medium (data generation)
 Files: `renderer/lesson-data/chapters/c*.js` generated stage-by-stage.
 Verification: `npm run validate:new` passes independently of legacy curriculum.
@@ -971,6 +976,6 @@ Verification: Clean `npm run verify`.
 | **git diff --check** | Clean — no whitespace errors |
 | **git status** | `On branch main` — untracked: `CURRICULUM_ARCHITECTURE.md`, `CURRICULUM_ARCHITECTURE_REVIEW.md`, `FINAL_CURRICULUM_ARCHITECTURE.md` |
 
-## VERDICT: IMPLEMENTATION READY
+## VERDICT: IMPLEMENTATION IN PROGRESS
 
-Phase A may begin immediately upon approval of this document. Phases B and C must not begin until Phase A is merged and `npm run verify` passes. Phase E1-E7 generation must not begin until Phases A-D are complete. Phase F cutover must not happen until all 34 chapters are validated.
+Phases A-D and Phase E1 (Stage 1 Curriculum, Chapters 1–6) are COMPLETE. The active implementation baseline is now after Chapter 6. Phase E2-E7 generation is next. Phase F cutover must not happen until all 34 chapters are validated.

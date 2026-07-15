@@ -30,7 +30,7 @@ Read these files in order before generating or modifying any chapter:
 | `renderer/lesson-data/curriculum.js` | How modules are aggregated into `window.LESSONS_DATA` |
 | `curriculum-rules.json` | Validator configuration. Note: The `tiers` key is preserved but its values document the new 7 stages (per FINAL_CURRICULUM_ARCHITECTURE.md). |
 | `renderer/lesson-data/<tier>-index.js` | Legacy tier manifests (removed in Phase F) |
-| `renderer/lesson-data/chapters/c01-*.js` | Schema v2 chapters (future location until generated) |
+| `renderer/lesson-data/chapters/c*.js` | Schema v2 chapters (Chapters 1–6 complete; Chapters 7–34 to be generated) |
 | `main.js` | IPC handlers: `compile-and-run`, `check-compiler` |
 | `preload.js` | API surface exposed to renderer: `window.api.compileAndRun`, `window.api.checkCompiler` |
 
@@ -38,7 +38,7 @@ Read these files in order before generating or modifying any chapter:
 
 ## 3. Current Runtime Curriculum Architecture
 
-The application uses `window.LESSONS_DATA` as the final curriculum contract. The curriculum is modularized into separate JavaScript files per chapter (currently 15 chapters, 32 lessons). These are loaded through plain `<script>` tags in `renderer/index.html` before the main application code. Each chapter file wraps its data in an IIFE and pushes it to a global `window.CPP_CHAPTERS` array. Finally, `renderer/lesson-data/curriculum.js` sorts these chapters by ID and assigns them to `window.LESSONS_DATA`. The main application (`app.js`) consumes this global variable directly.
+The application uses `window.LESSONS_DATA` as the final curriculum contract. The curriculum is modularized into separate JavaScript files per chapter (the new Schema v2 curriculum currently has 6 chapters and 32 lessons, completing Stage 1). These are loaded through plain `<script>` tags in `renderer/index.html` before the main application code. Each chapter file wraps its data in an IIFE and pushes it to a global `window.CPP_CHAPTERS` array. Finally, `renderer/lesson-data/curriculum.js` sorts these chapters by ID and assigns them to `window.LESSONS_DATA`. The main application (`app.js`) consumes this global variable directly.
 
 ---
 
@@ -94,7 +94,7 @@ The application uses `window.LESSONS_DATA` as the final curriculum contract. The
 ### 4.2 stdin Constraint — Validation vs Runtime
 
 **Runtime:** Interactive stdin is fully supported and test-covered in the application (Input tab + Terminal tab).
-**Validation:** Currently, the validator does not support interactive input during automated execution. Programs requiring interactive input will hang and timeout. Schema v2 introduces the `stdinFixture` field, but **automated execution support for piping this fixture is a Phase D change** and is not currently implemented.
+**Validation:** Schema v2 introduces the `stdinFixture` field, and **automated execution support for piping this fixture is fully implemented (Phase D complete)**. The validator now pipes this fixture to the compiled program during execution, preventing hangs and timeouts for interactive programs.
 
 ### 4.3 Supported HTML in lesson.content
 
@@ -422,7 +422,7 @@ var normalizedExpected = (expected || '').trim();
 
 ## 20. Future One-Chapter Generation Workflow
 
-Future AI sessions generating chapters MUST follow this workflow:
+Future AI sessions generating chapters (starting from Stage 2, Chapter 7) MUST follow this workflow:
 1. **Read `CHAPTER_SPEC.md`** and `curriculum-rules.json`.
 2. **Inspect Context:** Check prerequisites and existing chapters.
 3. **Verify Git State:** Ensure clean tree.
@@ -451,7 +451,7 @@ A generated chapter is complete when:
 
 ## 22. Current Limitations
 
-- **Interactive Stdin in Validator:** Programs requiring interactive input currently hang and timeout in the validator. Support for `stdinFixture` piping will be added in Phase D.
+- **Interactive Stdin in Validator:** Support for `stdinFixture` piping was successfully added in Phase D, allowing automated validation of interactive programs.
 - **Single Quiz Attempt:** UI locks choices after one click.
 - **Basic Formatter:** Indentation only, no full C++ parsing.
 - **CSP Restrictions:** No external images, scripts, or styles allowed in lesson content.
@@ -479,10 +479,10 @@ The existing `validate_curriculum.js` script verifies:
 - **Execution:** Runs the binary, trims stdout, compares to `expectedOutput`.
 - **Size:** Warns on large chapter files.
 
-Phase B and D enhancements add:
+Phase B and D enhancements (now COMPLETE) added:
 - Dynamic discovery of the `chapters/` directory.
 - `VALIDATE_NEW_ONLY` staging mode for strict Schema v2 enforcement.
-- Support for piping `stdinFixture` to the compiled program during execution (Phase D).
+- Support for piping `stdinFixture` to the compiled program during execution.
 - Legacy `exercise: Object` normalization during transition.
 
 **Cutover and Cleanup:**

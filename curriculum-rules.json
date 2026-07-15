@@ -74,12 +74,6 @@
   "chapterFileWarningSizeBytes": 35840,
   "oneChapterPerGenerationSession": true,
   "reservedChapterIds": [
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
     7,
     8,
     9,
@@ -89,6 +83,16 @@
     13,
     14,
     15
+  ],
+  "_reservedChapterIdsDescription": [
+    "PROJECT METADATA: This field is NOT enforced by validate_curriculum.js.",
+    "It tracks which legacy curriculum chapter IDs are still awaiting a completed Schema v2 replacement.",
+    "When a Schema v2 replacement chapter has passed the required audit process and been committed to the main branch, remove its legacy ID from reservedChapterIds.",
+    "This field exists only to track migration progress during the Schema v2 curriculum rewrite.",
+    "It does NOT indicate which curriculum the application currently loads.",
+    "The live application continues using the legacy curriculum until the Phase F Atomic Cutover.",
+    "During Phase F the application will switch to renderer/lesson-data/chapters/, after which this field is expected to become obsolete and may be removed."
+    "This list refers only to the 15 legacy curriculum chapters. It is not related to the numbering of the 34-chapter Schema v2 curriculum."	
   ],
   "optionalLessonFields": [
     "expectedOutput",
