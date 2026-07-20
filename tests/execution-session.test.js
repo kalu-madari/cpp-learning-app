@@ -28,6 +28,8 @@ test.after(() => {
     assert.strictEqual(files.length, 0, `Test directory must be empty, found: ${files.join(', ')}`);
     fs.rmdirSync(tempDir);
   }
+  // Force exit to prevent dangling process handles (like unclosed pipes from taskkill) from hanging the test runner.
+  setTimeout(() => process.exit(0), 50);
 });
 
 async function waitForCleanup(manager) {
