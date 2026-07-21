@@ -4,8 +4,30 @@
 // ============================================================================
 
 const { contextBridge, ipcRenderer } = require('electron');
+const fs = require('fs');
+const path = require('path');
 
 contextBridge.exposeInMainWorld('api', {
+  // -------------------------------------------------------------------------
+  // Chapter Discovery (Schema v2)
+  // -------------------------------------------------------------------------
+  /**
+   * Get an ordered list of all curriculum chapter script paths.
+   * Returns an array of paths (e.g., ['lesson-data/chapters/c01-...js']).
+   */
+  getCurriculumScripts: () => {
+    try {
+      const chaptersDir = path.join(__dirname, 'renderer', 'lesson-data', 'chapters');
+      return fs.readdirSync(chaptersDir)
+        .filter(f => f.endsWith('.js'))
+        .sort()
+        .map(f => 'lesson-data/chapters/' + f);
+    } catch (e) {
+      console.error('[Preload] Failed to get curriculum scripts:', e.message);
+      return [];
+    }
+  },
+
   // -------------------------------------------------------------------------
   // Window Controls (custom titlebar)
   // -------------------------------------------------------------------------
